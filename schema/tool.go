@@ -48,7 +48,8 @@ type ToolInfo struct {
 	// can be described in two ways:
 	//  - use ParameterInfo: schema.NewParamsOneOfByParams(params)
 	//  - use OpenAPIV3: schema.NewParamsOneOfByOpenAPIV3(openAPIV3)
-	ParamsOneOf
+	// If is nil, signals that the tool does not need any input parameter
+	*ParamsOneOf
 }
 
 // ParameterInfo is the information of a parameter.
@@ -82,21 +83,25 @@ type ParamsOneOf struct {
 }
 
 // NewParamsOneOfByParams creates a ParamsOneOf with map[string]*ParameterInfo.
-func NewParamsOneOfByParams(params map[string]*ParameterInfo) ParamsOneOf {
-	return ParamsOneOf{
+func NewParamsOneOfByParams(params map[string]*ParameterInfo) *ParamsOneOf {
+	return &ParamsOneOf{
 		Params: params,
 	}
 }
 
 // NewParamsOneOfByOpenAPIV3 creates a ParamsOneOf with *openapi3.Schema.
-func NewParamsOneOfByOpenAPIV3(openAPIV3 *openapi3.Schema) ParamsOneOf {
-	return ParamsOneOf{
+func NewParamsOneOfByOpenAPIV3(openAPIV3 *openapi3.Schema) *ParamsOneOf {
+	return &ParamsOneOf{
 		OpenAPIV3: openAPIV3,
 	}
 }
 
 // ToOpenAPIV3 parses ParamsOneOf, converts the parameter description that user actually provides, into the format ready to be passed to Model.
-func (p ParamsOneOf) ToOpenAPIV3() (*openapi3.Schema, error) {
+func (p *ParamsOneOf) ToOpenAPIV3() (*openapi3.Schema, error) {
+	if p == nil {
+		return nil, nil
+	}
+
 	var (
 		useParameterInfo = p.Params != nil
 		useOpenAPIV3     = p.OpenAPIV3 != nil

@@ -63,7 +63,7 @@ func goStruct2ToolInfo[T any](toolName, toolDesc string, opts ...Option) (*schem
 	return &schema.ToolInfo{
 		Name:        toolName,
 		Desc:        toolDesc,
-		ParamsOneOf: *paramsOneOf,
+		ParamsOneOf: paramsOneOf,
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func goStruct2ParamsOneOf[T any](opts ...Option) (*schema.ParamsOneOf, error) {
 
 	paramsOneOf := schema.NewParamsOneOfByOpenAPIV3(sc.Value)
 
-	return &paramsOneOf, nil
+	return paramsOneOf, nil
 
 }
 

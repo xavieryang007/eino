@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -550,5 +551,36 @@ func TestArrayStreamCombined(t *testing.T) {
 		if !record[i] {
 			t.Fatal("record missing")
 		}
+	}
+}
+
+func TestMultiStream(t *testing.T) {
+	var sts []*stream[int]
+	sum := 0
+	for i := 0; i < 10; i++ {
+		size := rand.Intn(10) + 1
+		sum += size
+		st := newStream[int](size)
+		for j := 1; j <= size; j++ {
+			st.send(j&0xffff+i<<16, nil)
+		}
+		st.closeSend()
+		sts = append(sts, st)
+	}
+	mst := newMultiStreamReader(sts)
+	receiveList := make([]int, 10)
+	for i := 0; i < sum; i++ {
+		chunk, err := mst.recv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receiveList[chunk>>16] >= chunk&0xffff {
+			t.Fatal("out of order")
+		}
+		receiveList[chunk>>16] = chunk & 0xffff
+	}
+	_, err := mst.recv()
+	if err != io.EOF {
+		t.Fatal("end stream haven't return EOF")
 	}
 }

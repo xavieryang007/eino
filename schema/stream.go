@@ -362,39 +362,62 @@ type multiStreamReader[T any] struct {
 
 	itemsCases []reflect.SelectCase
 
-	numOfClosedItemsCh int
+	chosenList []int
 }
 
 func newMultiStreamReader[T any](sts []*stream[T]) *multiStreamReader[T] {
-	itemsCases := make([]reflect.SelectCase, len(sts))
-
-	for i, st := range sts {
-		itemsCases[i] = reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(st.items),
+	var itemsCases []reflect.SelectCase
+	if len(sts) > maxSelectNum {
+		itemsCases = make([]reflect.SelectCase, len(sts))
+		for i, st := range sts {
+			itemsCases[i] = reflect.SelectCase{
+				Dir:  reflect.SelectRecv,
+				Chan: reflect.ValueOf(st.items),
+			}
 		}
+	}
+
+	chosenList := make([]int, len(sts))
+	for i := range sts {
+		chosenList[i] = i
 	}
 
 	return &multiStreamReader[T]{
 		sts:        sts,
 		itemsCases: itemsCases,
+		chosenList: chosenList,
 	}
 }
 
 func (msr *multiStreamReader[T]) recv() (T, error) {
-	for msr.numOfClosedItemsCh < len(msr.sts) {
-		chosen, recv, ok := reflect.Select(msr.itemsCases)
-		if ok {
-			item := recv.Interface().(streamItem[T]) // nolint: byted_interface_check_golintx
-			return item.chunk, item.err
+	for len(msr.chosenList) > 0 {
+		var chosen int
+		var ok bool
+		if len(msr.chosenList) > maxSelectNum {
+			var recv reflect.Value
+			chosen, recv, ok = reflect.Select(msr.itemsCases)
+			if ok {
+				item := recv.Interface().(streamItem[T]) // nolint: byted_interface_check_golintx
+				return item.chunk, item.err
+			}
+			msr.itemsCases[chosen].Chan = reflect.Value{}
+		} else {
+			var item *streamItem[T]
+			chosen, item, ok = receiveN(msr.chosenList, msr.sts)
+			if ok {
+				return item.chunk, item.err
+			}
 		}
 
-		msr.itemsCases[chosen].Chan = reflect.Value{}
-		msr.numOfClosedItemsCh++
+		for i := range msr.chosenList {
+			if msr.chosenList[i] == chosen {
+				msr.chosenList = append(msr.chosenList[:i], msr.chosenList[i+1:]...)
+				break
+			}
+		}
 	}
 
 	var t T
-
 	return t, io.EOF
 }
 

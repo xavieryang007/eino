@@ -1,16 +1,16 @@
 # Typo check: https://github.com/crate-ci/typos
 [default]
-# 添加需要忽略的单词
-exclude-words = [
-    "Invokable",
-    "invokable",
-    "InvokableLambda",
-    "InvokableRun",
-    "outter",
-    "Opion",
-    "TOpion",
-    "renderring",
-]
+
+[default.extend-words]
+Invokable = "Invokable"
+invokable = "invokable"
+InvokableLambda = "InvokableLambda"
+InvokableRun = "InvokableRun"
+outter = "outter"
+Opion = "Opion"
+TOpion = "TOpion"
+renderring = "renderring"
+
 
 [files]
 extend-exclude = ["go.mod", "go.sum", "check_branch_name.sh"]

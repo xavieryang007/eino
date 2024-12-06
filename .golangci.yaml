@@ -26,7 +26,6 @@ linters:
   disable:
     - errcheck
     - typecheck
-    - deadcode
     - varcheck
     - staticcheck
 issues:

@@ -32,7 +32,6 @@ package gmap
 //
 // 💡 AKA: Merge, Union, Combine
 func Concat[K comparable, V any](ms ...map[K]V) map[K]V {
-
 	// FastPath: no map or only one map given.
 	if len(ms) == 0 {
 		return make(map[K]V)

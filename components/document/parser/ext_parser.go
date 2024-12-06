@@ -83,7 +83,6 @@ func NewExtParser(ctx context.Context, conf *ExtParserConfig) (*ExtParser, error
 // GetParsers returns a copy of the registered parsers.
 // It is safe to modify the returned parsers.
 func (p *ExtParser) GetParsers() map[string]Parser {
-
 	res := make(map[string]Parser, len(p.parsers))
 	for k, v := range p.parsers {
 		res[k] = v

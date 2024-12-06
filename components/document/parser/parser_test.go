@@ -100,7 +100,6 @@ func TestParser(t *testing.T) {
 		assert.Equal(t, 1, len(docs))
 		assert.Equal(t, "hello world", docs[0].Content)
 		assert.Equal(t, "text", docs[0].MetaData["type"])
-
 	})
 
 	t.Run("test get parsers", func(t *testing.T) {

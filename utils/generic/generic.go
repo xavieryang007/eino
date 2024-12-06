@@ -25,7 +25,6 @@ import (
 // eg. NewInstance[int] returns 0.
 // eg. NewInstance[*int] returns *0 (will be ptr of 0, not nil!).
 func NewInstance[T any]() T {
-
 	typ := TypeOf[T]()
 
 	switch typ.Kind() {

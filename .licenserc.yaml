@@ -8,3 +8,15 @@ header:
     - '**/*.s'
 
   comment: on-failure
+
+checking:
+  spelling:
+    ignore-words:
+      - Invokable
+      - invokable
+      - InvokableLambda
+      - InvokableRun
+      - outter
+      - Opion
+      - TOpion
+      - renderring

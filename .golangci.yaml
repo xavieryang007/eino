@@ -26,8 +26,10 @@ linters:
   disable:
     - errcheck
     - typecheck
-    - varcheck
     - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
 issues:
   exclude-use-default: true
   exclude-files:

@@ -175,6 +175,8 @@ type graph struct {
 	runtimeGraphKey      string
 
 	buildError error
+
+	cmp component
 }
 
 func newGraph( // nolint: byted_s_args_length_limit
@@ -183,6 +185,8 @@ func newGraph( // nolint: byted_s_args_length_limit
 	inputChecker, outputChecker valueChecker,
 	inputConv, outputConv streamConverter,
 	graphKey string,
+	cmp component,
+	runCtx func(ctx context.Context) context.Context,
 ) *graph {
 	return &graph{
 		nodes:    make(map[string]*graphNode),
@@ -205,6 +209,10 @@ func newGraph( // nolint: byted_s_args_length_limit
 		runtimeCheckEdges:    make(map[string]map[string]bool),
 		runtimeCheckBranches: make(map[string][]bool),
 		runtimeGraphKey:      graphKey,
+
+		cmp: cmp,
+
+		runCtx: runCtx,
 	}
 }
 
@@ -214,6 +222,10 @@ func (g *graph) freeze() {
 
 func (g *graph) isFrozen() bool {
 	return g.frozen
+}
+
+func (g *graph) component() component {
+	return g.cmp
 }
 
 func (g *graph) addNode(name string, node *graphNode) (err error) {

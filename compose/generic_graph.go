@@ -22,12 +22,31 @@ import (
 	"github.com/cloudwego/eino/utils/generic"
 )
 
+type newGraphOptions struct {
+	withState func(ctx context.Context) context.Context
+}
+
+type NewGraphOption func(ngo *newGraphOptions)
+
+func WithGenLocalState[S any](gls GenLocalState[S]) NewGraphOption {
+	return func(ngo *newGraphOptions) {
+		ngo.withState = func(ctx context.Context) context.Context {
+			return context.WithValue(ctx, stateKey{}, gls(ctx))
+		}
+	}
+}
+
 // NewGraph create a directed graph that can compose components, lambda, chain, parallel etc.
 // simultaneously provide flexible and multi-granular aspect governance capabilities.
 // I: the input type of graph compiled product
 // O: the output type of graph compiled product
-func NewGraph[I, O any]() *Graph[I, O] {
-	return &Graph[I, O]{
+func NewGraph[I, O any](opts ...NewGraphOption) *Graph[I, O] {
+	options := &newGraphOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	g := &Graph[I, O]{
 		newGraph(
 			generic.TypeOf[I](),
 			generic.TypeOf[O](),
@@ -37,7 +56,16 @@ func NewGraph[I, O any]() *Graph[I, O] {
 			defaultStreamConverter[I],
 			defaultStreamConverter[O],
 			defaultGraphKey(),
-		)}
+			ComponentOfGraph,
+			options.withState,
+		),
+	}
+
+	if options.withState != nil {
+		g.addNodeChecker = nodeCheckerOfForbidNodeKey(baseNodeChecker)
+	}
+
+	return g
 }
 
 // Graph is a generic graph that can be used to compose components.
@@ -47,12 +75,8 @@ type Graph[I, O any] struct {
 	*graph
 }
 
-func (g *Graph[I, O]) component() component {
-	return ComponentOfGraph
-}
-
 // Compile take the raw graph and compile it into a form ready to be run.
-// eg.
+// e.g.
 //
 //	graph, err := compose.NewGraph[string, string]()
 //	if err != nil {...}
@@ -75,14 +99,8 @@ func (g *Graph[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 		return nil, err
 	}
 
-	// option component can override the default graph component.
-	comp := option.component
-	if len(comp) == 0 {
-		comp = g.component()
-	}
-
 	cr.meta = &executorMeta{
-		component:                  comp,
+		component:                  g.cmp,
 		isComponentCallbackEnabled: true,
 		componentImplType:          "",
 	}

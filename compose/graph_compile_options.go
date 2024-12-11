@@ -52,13 +52,6 @@ func WithGraphCompileCallbacks(cbs ...GraphCompileCallback) GraphCompileOption {
 	}
 }
 
-// withComponent sets the component type of the graph. ONLY FOR INTERNAL.
-func withComponent(component component) GraphCompileOption {
-	return func(o *graphCompileOptions) {
-		o.component = component
-	}
-}
-
 // InitGraphCompileCallbacks set global graph compile callbacks,
 // which ONLY will be added to top level graph compile options
 func InitGraphCompileCallbacks(cbs []GraphCompileCallback) {

@@ -582,7 +582,10 @@ func (c *Chain[I, O]) addNode(node *graphNode) {
 		nodeKey = node.nodeInfo.key
 	}
 	err := c.gg.addNode(nodeKey, node)
-	c.reportError(err)
+	if err != nil {
+		c.reportError(err)
+		return
+	}
 
 	if len(c.preNodeKeys) == 0 {
 		c.preNodeKeys = append(c.preNodeKeys, START)

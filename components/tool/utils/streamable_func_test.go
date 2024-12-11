@@ -1,0 +1,99 @@
+/*
+ * Copyright 2024 CloudWeGo Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package utils
+
+import (
+	"context"
+	"errors"
+	"io"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/cloudwego/eino/schema"
+)
+
+func TestNewStreamableTool(t *testing.T) {
+	ctx := context.Background()
+	type Input struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		Name string `json:"name"`
+	}
+
+	t.Run("simple_case", func(t *testing.T) {
+		tl := NewStreamTool[*Input, *Output](
+			&schema.ToolInfo{
+				Name: "search_user",
+				Desc: "search user info",
+				ParamsOneOf: schema.NewParamsOneOfByParams(
+					map[string]*schema.ParameterInfo{
+						"name": {
+							Type: "string",
+							Desc: "user name",
+						},
+					}),
+			},
+			func(ctx context.Context, input *Input) (output *schema.StreamReader[*Output], err error) {
+				sr, sw := schema.Pipe[*Output](2)
+				sw.Send(&Output{
+					Name: input.Name,
+				}, nil)
+				sw.Send(&Output{
+					Name: "lee",
+				}, nil)
+				sw.Close()
+
+				return sr, nil
+			},
+		)
+
+		info, err := tl.Info(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, "search_user", info.Name)
+		assert.Equal(t, map[string]*schema.ParameterInfo{
+			"name": {
+				Type: "string",
+				Desc: "user name",
+			},
+		}, info.Params)
+
+		sr, err := tl.StreamableRun(ctx, `{"name":"xxx"}`)
+		assert.NoError(t, err)
+
+		defer sr.Close()
+
+		idx := 0
+		for {
+			m, err := sr.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			assert.NoError(t, err)
+
+			if idx == 0 {
+				assert.Equal(t, `{"name":"xxx"}`, m)
+			} else {
+				assert.Equal(t, `{"name":"lee"}`, m)
+			}
+			idx++
+		}
+
+		assert.Equal(t, 2, idx)
+	})
+}

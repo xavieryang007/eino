@@ -3,6 +3,61 @@ name: Tests
 on: [ push, pull_request ]
 
 jobs:
+  unit_test:
+    name: "eino unit test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: unit test
+        uses: actions/codecov
+        inputs:
+          driver: go
+          commands:
+            - modules=`find . -name "go.mod" -exec dirname {} \;`
+            - echo $modules
+            - list=""
+            - coverpkg=""
+            - if [[ ! -f "go.work" ]];then go work init;fi
+            - for module in $modules; do go work use $module; list=$module"/... "$list; coverpkg=$module"/...,"$coverpkg; done
+            - go work sync
+            - go test -coverprofile=coverage.out -gcflags="all=-l -N" -coverpkg=$coverpkg $list
+          config:
+            status:
+              project:
+                eino:
+                  minimum_coverage: 65%
+                  paths:
+                    - "!tests"
+                    - "!examples/**"
+                    - "!*/examples/**"
+                    - "!*/mock/**"
+                eino-changed:
+                  base: "change"
+                  threshold: 0.8%
+                  paths:
+                    - "!tests"
+                    - "!examples/**"
+                    - "!*/examples/**"
+                    - "!*/mock/**"
+              diff:
+                eino:
+                  line_limit: 10 # 增量行数少于多少行时，默认置成功
+                  minimum_coverage: 50%
+                  paths:
+                    - "!tests"
+                    - "!examples/**"
+                    - "!*/examples/**"
+                    - "!*/mock/**"
+      - name: Sonar
+        uses: actions/sonar@v1
+        inputs:
+          coverage_path: /tmp/coverage.out
+          coverage_type: go
+          disable_quality_gates: true
+          exclusions_list:
+            - "!tests"
+            - "examples/**"
+            - "*/mock/**"
+          language: go
   unit-benchmark-test:
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +76,7 @@ jobs:
   compatibility-test:
     strategy:
       matrix:
-        go: [ "1.19", "1.20", "1.21", "1.22" ]
+        go: [ "1.18", "1.19", "1.20", "1.21", "1.22" ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

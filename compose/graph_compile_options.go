@@ -31,12 +31,6 @@ func WithGraphName(graphName string) GraphCompileOption {
 	}
 }
 
-func WithGraphKey(graphKey string) GraphCompileOption {
-	return func(o *graphCompileOptions) {
-		o.graphKey = graphKey
-	}
-}
-
 // WithNodeTriggerMode sets node trigger mode for the graph.
 // Different node trigger mode will affect graph execution order and result for specific graphs, such as those with parallel branches having different length of nodes.
 func WithNodeTriggerMode(triggerMode NodeTriggerMode) GraphCompileOption {

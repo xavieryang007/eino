@@ -32,45 +32,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-func TestRuntimeGraphKey(t *testing.T) {
-	ctx := context.Background()
-	lbd := InvokableLambda[string, string](func(ctx context.Context, input string) (output string, err error) {
-		return input, nil
-	})
-
-	t.Run("Graph", func(t *testing.T) {
-		c := &cb{}
-		g := NewGraph[string, string]()
-		_ = g.AddLambdaNode("lbd", lbd)
-		_ = g.AddEdge(START, "lbd")
-		_ = g.AddEdge("lbd", END)
-		_, err := g.Compile(ctx, []GraphCompileOption{WithGraphCompileCallbacks(c)}...)
-		assert.NoError(t, err)
-		assert.Equal(t, "github.com/cloudwego/eino/compose.TestRuntimeGraphKey.func2:43", c.gInfo.Key)
-	})
-
-	t.Run("Chain", func(t *testing.T) {
-		c := &cb{}
-		ch := NewChain[string, string]().AppendLambda(lbd)
-		_, err := ch.Compile(ctx, []GraphCompileOption{WithGraphCompileCallbacks(c)}...)
-		assert.NoError(t, err)
-		assert.Equal(t, "github.com/cloudwego/eino/compose.TestRuntimeGraphKey.func3:54", c.gInfo.Key)
-	})
-
-	t.Run("StateGraph", func(t *testing.T) {
-		c := &cb{}
-		g := NewStateGraph[string, string, string](func(ctx context.Context) (state string) {
-			return ""
-		})
-		_ = g.AddLambdaNode("lbd", lbd)
-		_ = g.AddEdge(START, "lbd")
-		_ = g.AddEdge("lbd", END)
-		_, err := g.Compile(ctx, []GraphCompileOption{WithGraphCompileCallbacks(c)}...)
-		assert.NoError(t, err)
-		assert.Equal(t, "github.com/cloudwego/eino/compose.TestRuntimeGraphKey.func4:62", c.gInfo.Key)
-	})
-}
-
 func TestSingleGraph(t *testing.T) {
 
 	const (
@@ -201,15 +162,15 @@ func TestGraphWithImplementableType(t *testing.T) {
 	r, err := g.Compile(context.Background(), WithMaxRunSteps(10))
 	assert.NoError(t, err)
 
-	out, err := r.Invoke(ctx, "how are you", WithRuntimeMaxSteps(1))
+	_, err = r.Invoke(ctx, "how are you", WithRuntimeMaxSteps(1))
 	assert.Error(t, err)
 	assert.Equal(t, ErrExceedMaxSteps, err)
 
-	out, err = r.Invoke(ctx, "how are you", WithGraphRunOption(WithRuntimeMaxSteps(1)))
+	_, err = r.Invoke(ctx, "how are you", WithGraphRunOption(WithRuntimeMaxSteps(1)))
 	assert.Error(t, err)
 	assert.Equal(t, ErrExceedMaxSteps, err)
 
-	out, err = r.Invoke(ctx, "how are you")
+	out, err := r.Invoke(ctx, "how are you")
 	assert.NoError(t, err)
 	assert.Equal(t, "how are you", out)
 
@@ -1065,36 +1026,6 @@ func TestPregelEnd(t *testing.T) {
 	}
 }
 
-func TestGraphAddNodeChecker(t *testing.T) {
-	t.Run("graph_checker_failed", func(t *testing.T) {
-		g := NewGraph[string, string]()
-		err := g.AddLambdaNode("node1",
-			InvokableLambda(func(ctx context.Context, input string) (output string, err error) {
-				return "node1", nil
-			}),
-			WithStatePostHandler(func(ctx context.Context, out string, state string) (string, error) {
-				return out, nil
-			}),
-		)
-		assert.ErrorContains(t, err, "only StateGraph support pre/post processor")
-	})
-
-	t.Run("state_graph_checker_success", func(t *testing.T) {
-		g := NewStateGraph[string, string, string](func(ctx context.Context) (state string) {
-			return ""
-		})
-		err := g.AddLambdaNode("node1",
-			InvokableLambda(func(ctx context.Context, input string) (output string, err error) {
-				return "node1", nil
-			}),
-			WithStatePostHandler(func(ctx context.Context, out string, state string) (string, error) {
-				return out, nil
-			}),
-		)
-		assert.NoError(t, err)
-	})
-}
-
 type cb struct {
 	gInfo *GraphInfo
 }
@@ -1145,7 +1076,7 @@ func TestGraphCompileCallback(t *testing.T) {
 		assert.NoError(t, err)
 
 		subGraph := NewGraph[string, string]()
-		ssGraphCompileOpts := []GraphCompileOption{WithGraphKey("k3")}
+		var ssGraphCompileOpts []GraphCompileOption
 		ssGraphOpts := []GraphAddNodeOpt{WithGraphCompileOptions(ssGraphCompileOpts...)}
 		err = subGraph.AddGraphNode("sub_sub_1", subSubGraph, ssGraphOpts...)
 		assert.NoError(t, err)
@@ -1154,7 +1085,7 @@ func TestGraphCompileCallback(t *testing.T) {
 		err = subGraph.AddEdge("sub_sub_1", END)
 		assert.NoError(t, err)
 
-		subGraphCompileOpts := []GraphCompileOption{WithMaxRunSteps(2), WithGraphKey("k2")}
+		subGraphCompileOpts := []GraphCompileOption{WithMaxRunSteps(2)}
 		subGraphOpts := []GraphAddNodeOpt{WithGraphCompileOptions(subGraphCompileOpts...)}
 		err = g.AddGraphNode("sub_graph", subGraph, subGraphOpts...)
 		assert.NoError(t, err)
@@ -1188,11 +1119,10 @@ func TestGraphCompileCallback(t *testing.T) {
 		assert.NoError(t, err)
 
 		c := &cb{}
-		opt := []GraphCompileOption{WithGraphCompileCallbacks(c), WithGraphKey("k1")}
+		opt := []GraphCompileOption{WithGraphCompileCallbacks(c)}
 		_, err = g.Compile(context.Background(), opt...)
 		assert.NoError(t, err)
 		expected := &GraphInfo{
-			Key:            "k1",
 			CompileOptions: opt,
 			Nodes: map[string]GraphNodeInfo{
 				"node1": {
@@ -1224,7 +1154,6 @@ func TestGraphCompileCallback(t *testing.T) {
 					OutputType:       reflect.TypeOf(""),
 					Name:             "Graph",
 					GraphInfo: &GraphInfo{
-						Key:            "k2",
 						CompileOptions: subGraphCompileOpts,
 						Nodes: map[string]GraphNodeInfo{
 							"sub_sub_1": {
@@ -1235,7 +1164,6 @@ func TestGraphCompileCallback(t *testing.T) {
 								OutputType:       reflect.TypeOf(""),
 								Name:             "Graph",
 								GraphInfo: &GraphInfo{
-									Key:            "k3",
 									CompileOptions: ssGraphCompileOpts,
 									Nodes: map[string]GraphNodeInfo{
 										"sub1": {

@@ -40,6 +40,28 @@ func WithGenLocalState[S any](gls GenLocalState[S]) NewGraphOption {
 // simultaneously provide flexible and multi-granular aspect governance capabilities.
 // I: the input type of graph compiled product
 // O: the output type of graph compiled product
+//
+// To share state between nodes, use WithGenLocalState option:
+//
+//	type testState struct {
+//		UserInfo *UserInfo
+//		KVs     map[string]any
+//	}
+//
+//	genStateFunc := func(ctx context.Context) *testState {
+//		return &testState{}
+//	}
+//
+//	graph := compose.NewGraph[string, string](WithGenLocalState(genStateFunc))
+//
+//	// you can use WithPreHandler and WithPostHandler to do something with state
+//	graph.AddNode("node1", someNode, compose.WithPreHandler(func(ctx context.Context, in string, state *testState) (string, error) {
+//		// do something with state
+//		return in, nil
+//	}), compose.WithPostHandler(func(ctx context.Context, out string, state *testState) (string, error) {
+//		// do something with state
+//		return out, nil
+//	}))
 func NewGraph[I, O any](opts ...NewGraphOption) *Graph[I, O] {
 	options := &newGraphOptions{}
 	for _, opt := range opts {
@@ -55,14 +77,10 @@ func NewGraph[I, O any](opts ...NewGraphOption) *Graph[I, O] {
 			defaultValueChecker[O],
 			defaultStreamConverter[I],
 			defaultStreamConverter[O],
-			defaultGraphKey(),
 			ComponentOfGraph,
 			options.withState,
+			options.withState != nil,
 		),
-	}
-
-	if options.withState != nil {
-		g.addNodeChecker = nodeCheckerOfForbidNodeKey(baseNodeChecker)
 	}
 
 	return g

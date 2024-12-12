@@ -22,7 +22,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// Fast inject callback input / output aspect for component developer
+// OnStart Fast inject callback input / output aspect for component developer
 // e.g.
 //
 //	func (t *testchatmodel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (resp *schema.Message, err error) {

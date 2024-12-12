@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/components/embedding"
@@ -38,9 +37,6 @@ const START = "start"
 
 // END is the end node of the graph. You can add your last edge with END.
 const END = "end"
-
-// errGraphFrozen is the error returned when the graph is frozen but still add node or edge.
-var errGraphFrozen = errors.New("graph already frozen")
 
 // GraphBranchCondition is the condition type for the branch.
 type GraphBranchCondition[T any] func(ctx context.Context, in T) (endNode string, err error)
@@ -63,7 +59,7 @@ func (gb *GraphBranch) GetEndNode() map[string]bool {
 
 // NewGraphBranch creates a new graph branch.
 // It is used to determine the next node based on the condition.
-// eg.
+// e.g.
 //
 //	condition := func(ctx context.Context, in string) (string, error) {
 //		// logic to determine the next node
@@ -97,7 +93,7 @@ func NewGraphBranch[T any](condition GraphBranchCondition[T], endNodes map[strin
 
 // NewStreamGraphBranch creates a new stream graph branch.
 // It is used to determine the next node based on the condition of stream input.
-// eg.
+// e.g.
 //
 //	condition := func(ctx context.Context, in *schema.StreamReader[T]) (string, error) {
 //		// logic to determine the next node.
@@ -156,12 +152,7 @@ type graph struct {
 
 	toValidateMap map[string][]string
 
-	frozen bool
-
 	runCtx func(ctx context.Context) context.Context
-
-	addNodeChecker nodeChecker
-	compileChecker func(options *graphCompileOptions) error
 
 	expectedInputType, expectedOutputType reflect.Type
 	inputStreamFilter                     streamMapFilter
@@ -172,11 +163,14 @@ type graph struct {
 
 	runtimeCheckEdges    map[string]map[string]bool
 	runtimeCheckBranches map[string][]bool
-	runtimeGraphKey      string
 
 	buildError error
 
 	cmp component
+
+	enableState bool
+
+	compiled bool
 }
 
 func newGraph( // nolint: byted_s_args_length_limit
@@ -184,9 +178,9 @@ func newGraph( // nolint: byted_s_args_length_limit
 	filter streamMapFilter,
 	inputChecker, outputChecker valueChecker,
 	inputConv, outputConv streamConverter,
-	graphKey string,
 	cmp component,
 	runCtx func(ctx context.Context) context.Context,
+	enableState bool,
 ) *graph {
 	return &graph{
 		nodes:    make(map[string]*graphNode),
@@ -194,9 +188,6 @@ func newGraph( // nolint: byted_s_args_length_limit
 		branches: make(map[string][]*GraphBranch),
 
 		toValidateMap: make(map[string][]string),
-
-		addNodeChecker: nodeCheckerOfForbidProcessor(nodeCheckerOfForbidNodeKey(baseNodeChecker)),
-		compileChecker: defaultCompileChecker,
 
 		expectedInputType:     inputType,
 		expectedOutputType:    outputType,
@@ -208,61 +199,72 @@ func newGraph( // nolint: byted_s_args_length_limit
 
 		runtimeCheckEdges:    make(map[string]map[string]bool),
 		runtimeCheckBranches: make(map[string][]bool),
-		runtimeGraphKey:      graphKey,
 
 		cmp: cmp,
 
 		runCtx: runCtx,
+
+		enableState: enableState,
 	}
-}
-
-func (g *graph) freeze() {
-	g.frozen = true
-}
-
-func (g *graph) isFrozen() bool {
-	return g.frozen
 }
 
 func (g *graph) component() component {
 	return g.cmp
 }
 
-func (g *graph) addNode(name string, node *graphNode) (err error) {
+func isChain(cmp component) bool {
+	return cmp == ComponentOfChain || cmp == ComponentOfStateChain
+}
+
+// ErrGraphCompiled is returned when attempting to modify a graph after it has been compiled
+var ErrGraphCompiled = errors.New("graph has been compiled, cannot be modified")
+
+func (g *graph) addNode(key string, node *graphNode, options *graphAddNodeOpts) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
+
+	if g.compiled {
+		return ErrGraphCompiled
+	}
+
 	defer func() {
 		if err != nil {
 			g.buildError = err
 		}
 	}()
 
-	if g.frozen {
-		return errGraphFrozen
+	if key == END || key == START {
+		return fmt.Errorf("node '%s' is reserved, cannot add manually", key)
 	}
 
-	if name == END || name == START {
-		return fmt.Errorf("node '%s' is reserved, cannot add manually", name)
+	if _, ok := g.nodes[key]; ok {
+		return fmt.Errorf("node '%s' already present", key)
 	}
 
-	if _, ok := g.nodes[name]; ok {
-		return fmt.Errorf("node '%s' already present", name)
+	// check options
+	if options.needState {
+		if !g.enableState {
+			return fmt.Errorf("node '%s' needs state but graph state is not enabled", key)
+		}
 	}
 
-	if err = g.addNodeChecker(name, node); err != nil {
-		return err
+	if options.nodeOptions.nodeKey != "" {
+		if !isChain(g.cmp) {
+			return errors.New("only chain support node key option")
+		}
 	}
+	// end: check options
 
-	g.nodes[name] = node
+	g.nodes[key] = node
 
 	return nil
 }
 
 // AddEdge adds an edge to the graph, edge means a data flow from startNode to endNode.
-// the previous node's output type must can be set to the next node's input type.
+// the previous node's output type must be set to the next node's input type.
 // NOTE: startNode and endNode must have been added to the graph before adding edge.
-// eg.
+// e.g.
 //
 //	graph.AddNode("start_node_key", compose.NewPassthroughNode())
 //	graph.AddNode("end_node_key", compose.NewPassthroughNode())
@@ -272,15 +274,16 @@ func (g *graph) AddEdge(startNode, endNode string) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
+
+	if g.compiled {
+		return ErrGraphCompiled
+	}
+
 	defer func() {
 		if err != nil {
 			g.buildError = err
 		}
 	}()
-
-	if g.frozen {
-		return errGraphFrozen
-	}
 
 	if startNode == END {
 		return errors.New("END cannot be a start node")
@@ -328,7 +331,7 @@ func (g *graph) AddEdge(startNode, endNode string) (err error) {
 }
 
 // AddEmbeddingNode adds a node that implements embedding.Embedder.
-// eg.
+// e.g.
 //
 //	embeddingNode, err := openai.NewEmbedder(ctx, &openai.EmbeddingConfig{
 //		Model: "text-embedding-3-small",
@@ -336,46 +339,51 @@ func (g *graph) AddEdge(startNode, endNode string) (err error) {
 //
 //	graph.AddEmbeddingNode("embedding_node_key", embeddingNode)
 func (g *graph) AddEmbeddingNode(key string, node embedding.Embedder, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toEmbeddingNode(node, opts...))
+	gNode, options := toEmbeddingNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddRetrieverNode adds a node that implements retriever.Retriever.
-// eg.
+// e.g.
 //
 //	retriever, err := vikingdb.NewRetriever(ctx, &vikingdb.RetrieverConfig{})
 //
 //	graph.AddRetrieverNode("retriever_node_key", retrieverNode)
 func (g *graph) AddRetrieverNode(key string, node retriever.Retriever, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toRetrieverNode(node, opts...))
+	gNode, options := toRetrieverNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // Deprecated: use AddLoaderNode instead.
 func (g *graph) AddLoaderSplitterNode(key string, node document.LoaderSplitter, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toLoaderSplitterNode(node, opts...))
+	gNode, options := toLoaderSplitterNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddLoaderNode adds a node that implements document.Loader.
-// eg.
+// e.g.
 //
 //	loader, err := file.NewLoader(ctx, &file.LoaderConfig{})
 //
 //	graph.AddLoaderNode("loader_node_key", loader)
 func (g *graph) AddLoaderNode(key string, node document.Loader, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toLoaderNode(node, opts...))
+	gNode, options := toLoaderNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddIndexerNode adds a node that implements indexer.Indexer.
-// eg.
+// e.g.
 //
 //	indexer, err := vikingdb.NewIndexer(ctx, &vikingdb.IndexerConfig{})
 //
 //	graph.AddIndexerNode("indexer_node_key", indexer)
 func (g *graph) AddIndexerNode(key string, node indexer.Indexer, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toIndexerNode(node, opts...))
+	gNode, options := toIndexerNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddChatModelNode add node that implements model.ChatModel.
-// eg.
+// e.g.
 //
 //	chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 //		Model: "gpt-4o",
@@ -383,11 +391,12 @@ func (g *graph) AddIndexerNode(key string, node indexer.Indexer, opts ...GraphAd
 //
 //	graph.AddChatModelNode("chat_model_node_key", chatModel)
 func (g *graph) AddChatModelNode(key string, node model.ChatModel, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toChatModelNode(node, opts...))
+	gNode, options := toChatModelNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddChatTemplateNode add node that implements prompt.ChatTemplate.
-// eg.
+// e.g.
 //
 //	chatTemplate, err := prompt.FromMessages(schema.FString, &schema.Message{
 //		Role:    schema.System,
@@ -396,27 +405,30 @@ func (g *graph) AddChatModelNode(key string, node model.ChatModel, opts ...Graph
 //
 //	graph.AddChatTemplateNode("chat_template_node_key", chatTemplate)
 func (g *graph) AddChatTemplateNode(key string, node prompt.ChatTemplate, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toChatTemplateNode(node, opts...))
+	gNode, options := toChatTemplateNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddToolsNode adds a node that implements tools.ToolsNode.
-// eg.
+// e.g.
 //
 //	toolsNode, err := tools.NewToolNode(ctx, &tools.ToolsNodeConfig{})
 //
 //	graph.AddToolsNode("tools_node_key", toolsNode)
 func (g *graph) AddToolsNode(key string, node *ToolsNode, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toToolsNode(node, opts...))
+	gNode, options := toToolsNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddDocumentTransformerNode adds a node that implements document.Transformer.
-// eg.
+// e.g.
 //
 //	markdownSplitter, err := markdown.NewHeaderSplitter(ctx, &markdown.HeaderSplitterConfig{})
 //
 //	graph.AddDocumentTransformerNode("document_transformer_node_key", markdownSplitter)
 func (g *graph) AddDocumentTransformerNode(key string, node document.Transformer, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toDocumentTransformerNode(node, opts...))
+	gNode, options := toDocumentTransformerNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddLambdaNode add node that implements at least one of Invoke[I, O], Stream[I, O], Collect[I, O], Transform[I, O].
@@ -427,28 +439,30 @@ func (g *graph) AddDocumentTransformerNode(key string, node document.Transformer
 // for Transform[I, O], use compose.TransformableLambda()
 // for arbitrary combinations of 4 kinds of lambda, use compose.AnyLambda()
 func (g *graph) AddLambdaNode(key string, node *Lambda, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toLambdaNode(node, opts...))
+	gNode, options := toLambdaNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddGraphNode add one kind of Graph[I, O]、Chain[I, O]、StateChain[I, O, S] as a node.
 // for Graph[I, O], comes from NewGraph[I, O]()
 // for Chain[I, O], comes from NewChain[I, O]()
-// for StateGraph[I, O, S], comes from NewStateGraph[I, O, S]()
 func (g *graph) AddGraphNode(key string, node AnyGraph, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toAnyGraphNode(node, opts...))
+	gNode, options := toAnyGraphNode(node, opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddPassthroughNode adds a passthrough node to the graph.
 // mostly used in pregel mode of graph.
-// eg.
+// e.g.
 //
 //	graph.AddPassthroughNode("passthrough_node_key")
 func (g *graph) AddPassthroughNode(key string, opts ...GraphAddNodeOpt) error {
-	return g.addNode(key, toPassthroughNode(opts...))
+	gNode, options := toPassthroughNode(opts...)
+	return g.addNode(key, gNode, options)
 }
 
 // AddBranch adds a branch to the graph.
-// eg.
+// e.g.
 //
 //	condition := func(ctx context.Context, in string) (string, error) {
 //		return "next_node_key", nil
@@ -461,15 +475,16 @@ func (g *graph) AddBranch(startNode string, branch *GraphBranch) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
+
+	if g.compiled {
+		return ErrGraphCompiled
+	}
+
 	defer func() {
 		if err != nil {
 			g.buildError = err
 		}
 	}()
-
-	if g.frozen {
-		return errGraphFrozen
-	}
 
 	if startNode == END {
 		return errors.New("END cannot be a start node")
@@ -505,9 +520,9 @@ func (g *graph) AddBranch(startNode string, branch *GraphBranch) (err error) {
 			}
 		}
 
-		err := g.validateAndInferType(startNode, endNode)
-		if err != nil {
-			return err
+		e := g.validateAndInferType(startNode, endNode)
+		if e != nil {
+			return e
 		}
 
 		if startNode == START {
@@ -517,9 +532,9 @@ func (g *graph) AddBranch(startNode string, branch *GraphBranch) (err error) {
 			g.endNodes = append(g.endNodes, startNode)
 		}
 
-		err = g.updateToValidateMap()
-		if err != nil {
-			return err
+		e = g.updateToValidateMap()
+		if e != nil {
+			return e
 		}
 	}
 
@@ -646,17 +661,18 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		return nil, g.buildError
 	}
 
-	err := g.compileChecker(opt)
-	if err != nil {
-		return nil, err
-	}
-
 	runType := runTypePregel
 	cb := pregelChannelBuilder
 	if opt != nil {
-		if opt.nodeTriggerMode == AllPredecessor {
-			runType = runTypeDAG
-			cb = dagChannelBuilder
+		if opt.nodeTriggerMode != "" {
+			if isChain(g.cmp) {
+				return nil, errors.New("chain doesn't support node trigger mode option")
+			}
+
+			if opt.nodeTriggerMode == AllPredecessor {
+				runType = runTypeDAG
+				cb = dagChannelBuilder
+			}
 		}
 	}
 
@@ -701,9 +717,7 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		branches := g.branches[name]
 		if len(branches) > 0 {
 			branchRuns := make([]*GraphBranch, 0, len(branches))
-			for _, branch := range branches {
-				branchRuns = append(branchRuns, branch)
-			}
+			branchRuns = append(branchRuns, branches...)
 
 			chCall.writeToBranches = branchRuns
 		}
@@ -728,9 +742,7 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		writeTo:         g.edges[START],
 		writeToBranches: make([]*GraphBranch, len(g.branches[START])),
 	}
-	for i := range g.branches[START] {
-		inputChannels.writeToBranches[i] = g.branches[START][i]
-	}
+	copy(inputChannels.writeToBranches, g.branches[START])
 
 	// validate dag
 	if runType == runTypeDAG {
@@ -762,7 +774,7 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 	}
 
 	if runType == runTypeDAG {
-		err = validateDAG(r.chanSubscribeTo, r.invertedEdges)
+		err := validateDAG(r.chanSubscribeTo, r.invertedEdges)
 		if err != nil {
 			return nil, err
 		}
@@ -777,11 +789,11 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		r.options.maxRunSteps = len(r.chanSubscribeTo) + 10
 	}
 
-	g.freeze()
+	g.compiled = true
 
 	g.onCompileFinish(ctx, opt, key2SubGraphs)
 
-	return r.toComposableRunnable()
+	return r.toComposableRunnable(), nil
 }
 
 type subGraphCompileCallback struct {
@@ -813,15 +825,8 @@ func (gn *graphNode) beforeChildGraphCompile(nodeKey string, key2SubGraphs map[s
 	gn.nodeInfo.compileOption.callbacks = append(gn.nodeInfo.compileOption.callbacks, &subGraphCompileCallback{closure: subGraphCallback})
 }
 
-func (g *graph) toGraphInfo(ctx context.Context, opt *graphCompileOptions, key2SubGraphs map[string]*GraphInfo) *GraphInfo {
-
-	graphKey := g.runtimeGraphKey
-	if opt.graphKey != "" {
-		graphKey = opt.graphKey
-	}
-
+func (g *graph) toGraphInfo(opt *graphCompileOptions, key2SubGraphs map[string]*GraphInfo) *GraphInfo {
 	gInfo := &GraphInfo{
-		Key:            graphKey,
 		CompileOptions: opt.origOpts,
 		Nodes:          make(map[string]GraphNodeInfo, len(g.nodes)),
 		Edges:          gmap.Clone(g.edges),
@@ -896,7 +901,7 @@ func (g *graph) onCompileFinish(ctx context.Context, opt *graphCompileOptions, k
 		return
 	}
 
-	gInfo := g.toGraphInfo(ctx, opt, key2SubGraphs)
+	gInfo := g.toGraphInfo(opt, key2SubGraphs)
 
 	for _, cb := range opt.callbacks {
 		cb.OnFinish(ctx, gInfo)
@@ -905,10 +910,6 @@ func (g *graph) onCompileFinish(ctx context.Context, opt *graphCompileOptions, k
 
 func (g *graph) GetType() string {
 	return ""
-}
-
-func defaultCompileChecker(options *graphCompileOptions) error {
-	return nil
 }
 
 func transferTask(script [][]string, invertedEdges map[string][]string) [][]string {
@@ -990,27 +991,4 @@ func validateDAG(chanSubscribeTo map[string]*chanCall, invertedEdges map[string]
 		}
 	}
 	return nil
-}
-
-func wrapCompileChecker(checkers ...func(options *graphCompileOptions) error) func(options *graphCompileOptions) error {
-	return func(options *graphCompileOptions) error {
-		for _, checker := range checkers {
-			if checker == nil {
-				continue
-			}
-
-			if err := checker(options); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-}
-
-func defaultGraphKey() string {
-	pcs := make([]uintptr, 1)
-	_ = runtime.Callers(3, pcs)
-	frame, _ := runtime.CallersFrames(pcs).Next()
-	return fmt.Sprintf("%s:%d", frame.Function, frame.Line)
 }

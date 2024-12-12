@@ -26,139 +26,152 @@ import (
 	"github.com/cloudwego/eino/components/retriever"
 )
 
-func toEmbeddingNode(node embedding.Embedder, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfEmbedding, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.EmbedStrings, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
-}
-
-func toRetrieverNode(node retriever.Retriever, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfRetriever, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Retrieve, nil, nil, nil,
+func toComponentNode[I, O, TOption any]( // nolint: byted_s_args_length_limit
+	node any,
+	componentType component,
+	invoke Invoke[I, O, TOption],
+	stream Stream[I, O, TOption],
+	collect Collect[I, O, TOption],
+	transform Transform[I, O, TOption],
+	opts ...GraphAddNodeOpt,
+) (*graphNode, *graphAddNodeOpts) {
+	meta := parseExecutorInfoFromComponent(componentType, node)
+	info, options := getNodeInfo(opts...)
+	run := runnableLambda(invoke, stream, collect, transform,
 		!meta.isComponentCallbackEnabled,
 	)
 
 	gn := toNode(info, run, nil, meta, node, opts...)
 
-	return gn
+	return gn, options
 }
 
-func toLoaderSplitterNode(node document.LoaderSplitter, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfLoaderSplitter, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.LoadAndSplit, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toEmbeddingNode(node embedding.Embedder, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfEmbedding,
+		node.EmbedStrings,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toLoaderNode(node document.Loader, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfLoader, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Load, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toRetrieverNode(node retriever.Retriever, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfRetriever,
+		node.Retrieve,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toIndexerNode(node indexer.Indexer, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfIndexer, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Store, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toLoaderSplitterNode(node document.LoaderSplitter, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfLoaderSplitter,
+		node.LoadAndSplit,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toChatModelNode(node model.ChatModel, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfChatModel, node)
-	info := getNodeInfo(opts...)
-
-	run := runnableLambda(node.Generate, node.Stream, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toLoaderNode(node document.Loader, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfLoader,
+		node.Load,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toChatTemplateNode(node prompt.ChatTemplate, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfPrompt, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Format, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toIndexerNode(node indexer.Indexer, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfIndexer,
+		node.Store,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toDocumentTransformerNode(node document.Transformer, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(components.ComponentOfTransformer, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Transform, nil, nil, nil,
-		!meta.isComponentCallbackEnabled,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toChatModelNode(node model.ChatModel, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfChatModel,
+		node.Generate,
+		node.Stream,
+		nil,
+		nil,
+		opts...)
 }
 
-func toToolsNode(node *ToolsNode, opts ...GraphAddNodeOpt) *graphNode {
-	meta := parseExecutorInfoFromComponent(ComponentOfToolsNode, node)
-	info := getNodeInfo(opts...)
-	run := runnableLambda(node.Invoke, node.Stream, nil, nil,
-		true,
-	)
-
-	gn := toNode(info, run, nil, meta, node, opts...)
-
-	return gn
+func toChatTemplateNode(node prompt.ChatTemplate, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfPrompt,
+		node.Format,
+		nil,
+		nil,
+		nil,
+		opts...)
 }
 
-func toLambdaNode(node *Lambda, opts ...GraphAddNodeOpt) *graphNode {
-	info := getNodeInfo(opts...)
+func toDocumentTransformerNode(node document.Transformer, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		components.ComponentOfTransformer,
+		node.Transform,
+		nil,
+		nil,
+		nil,
+		opts...)
+}
+
+func toToolsNode(node *ToolsNode, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	return toComponentNode(
+		node,
+		ComponentOfToolsNode,
+		node.Invoke,
+		node.Stream,
+		nil,
+		nil,
+		opts...)
+}
+
+func toLambdaNode(node *Lambda, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
+	info, options := getNodeInfo(opts...)
 
 	gn := toNode(info, node.executor, nil, node.executor.meta, node, opts...)
 
-	return gn
+	return gn, options
 }
 
-func toAnyGraphNode(node AnyGraph, opts ...GraphAddNodeOpt) *graphNode {
+func toAnyGraphNode(node AnyGraph, opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
 	meta := parseExecutorInfoFromComponent(node.component(), node)
-	info := getNodeInfo(opts...)
+	info, options := getNodeInfo(opts...)
 
 	gn := toNode(info, nil, node, meta, node, opts...)
 
-	return gn
+	return gn, options
 }
 
-func toPassthroughNode(opts ...GraphAddNodeOpt) *graphNode {
+func toPassthroughNode(opts ...GraphAddNodeOpt) (*graphNode, *graphAddNodeOpts) {
 	node := composablePassthrough()
-	info := getNodeInfo(opts...)
+	info, options := getNodeInfo(opts...)
 	gn := toNode(info, node, nil, node.meta, node, opts...)
-	return gn
+	return gn, options
 }
 
-func toNode(nodeInfo *nodeInfo, executor *composableRunnable, graph AnyGraph, meta *executorMeta, instance any, opts ...GraphAddNodeOpt) *graphNode { // nolint: byted_s_args_length_limit
+func toNode(nodeInfo *nodeInfo, executor *composableRunnable, graph AnyGraph, // nolint: byted_s_args_length_limit
+	meta *executorMeta, instance any, opts ...GraphAddNodeOpt) *graphNode {
+
 	if meta == nil {
 		meta = &executorMeta{}
 	}

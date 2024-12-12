@@ -31,7 +31,6 @@ import (
 // it is useful when you want to run multiple nodes in parallel in a chain.
 func NewParallel() *Parallel {
 	return &Parallel{
-		nodes:      make([]*graphNode, 0),
 		outputKeys: make(map[string]bool),
 	}
 }
@@ -48,7 +47,7 @@ func NewParallel() *Parallel {
 //	chain := NewChain[any,any]()
 //	chain.AppendParallel(parallel)
 type Parallel struct {
-	nodes      []*graphNode
+	nodes      []nodeOptionsPair
 	outputKeys map[string]bool
 	err        error
 }
@@ -67,7 +66,8 @@ type Parallel struct {
 //	p.AddChatModel("output_key01", chatModel01)
 //	p.AddChatModel("output_key02", chatModel02)
 func (p *Parallel) AddChatModel(outputKey string, node model.ChatModel, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toChatModelNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toChatModelNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddChatTemplate adds a chat template to the parallel.
@@ -80,7 +80,8 @@ func (p *Parallel) AddChatModel(outputKey string, node model.ChatModel, opts ...
 //
 //	p.AddChatTemplate("output_key01", chatTemplate01)
 func (p *Parallel) AddChatTemplate(outputKey string, node prompt.ChatTemplate, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toChatTemplateNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toChatTemplateNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddToolsNode adds a tools node to the parallel.
@@ -92,7 +93,8 @@ func (p *Parallel) AddChatTemplate(outputKey string, node prompt.ChatTemplate, o
 //
 //	p.AddToolsNode("output_key01", toolsNode)
 func (p *Parallel) AddToolsNode(outputKey string, node *ToolsNode, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toToolsNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toToolsNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddLambda adds a lambda node to the parallel.
@@ -104,7 +106,8 @@ func (p *Parallel) AddToolsNode(outputKey string, node *ToolsNode, opts ...Graph
 //
 //	p.AddLambda("output_key01", compose.InvokeLambda(lambdaFunc))
 func (p *Parallel) AddLambda(outputKey string, node *Lambda, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toLambdaNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toLambdaNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddEmbedding adds an embedding node to the parallel.
@@ -116,7 +119,8 @@ func (p *Parallel) AddLambda(outputKey string, node *Lambda, opts ...GraphAddNod
 //
 //	p.AddEmbedding("output_key01", embeddingNode)
 func (p *Parallel) AddEmbedding(outputKey string, node embedding.Embedder, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toEmbeddingNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toEmbeddingNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddRetriever adds a retriever node to the parallel.
@@ -126,13 +130,15 @@ func (p *Parallel) AddEmbedding(outputKey string, node embedding.Embedder, opts 
 //
 //	p.AddRetriever("output_key01", retriever)
 func (p *Parallel) AddRetriever(outputKey string, node retriever.Retriever, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toRetrieverNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toRetrieverNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddLoaderSplitter adds a loader splitter node to the parallel.
 // Deprecated: use AddLoader instead.
 func (p *Parallel) AddLoaderSplitter(outputKey string, node document.LoaderSplitter, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toLoaderSplitterNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toLoaderSplitterNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddLoader adds a loader node to the parallel.
@@ -142,7 +148,8 @@ func (p *Parallel) AddLoaderSplitter(outputKey string, node document.LoaderSplit
 //
 //	p.AddLoader("output_key01", loader)
 func (p *Parallel) AddLoader(outputKey string, node document.Loader, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toLoaderNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toLoaderNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddIndexer adds an indexer node to the parallel.
@@ -154,7 +161,8 @@ func (p *Parallel) AddLoader(outputKey string, node document.Loader, opts ...Gra
 //
 //	p.AddIndexer("output_key01", indexer)
 func (p *Parallel) AddIndexer(outputKey string, node indexer.Indexer, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toIndexerNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toIndexerNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddDocumentTransformer adds an Document Transformer node to the parallel.
@@ -164,7 +172,8 @@ func (p *Parallel) AddIndexer(outputKey string, node indexer.Indexer, opts ...Gr
 //
 //	p.AddDocumentTransformer("output_key01", markdownSplitter)
 func (p *Parallel) AddDocumentTransformer(outputKey string, node document.Transformer, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toDocumentTransformerNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toDocumentTransformerNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddGraph adds a graph node to the parallel.
@@ -175,7 +184,8 @@ func (p *Parallel) AddDocumentTransformer(outputKey string, node document.Transf
 //
 //	p.AddGraph("output_key01", graph)
 func (p *Parallel) AddGraph(outputKey string, node AnyGraph, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toAnyGraphNode(node, append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toAnyGraphNode(node, append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
 // AddPassthrough adds a passthrough node to the parallel.
@@ -183,10 +193,11 @@ func (p *Parallel) AddGraph(outputKey string, node AnyGraph, opts ...GraphAddNod
 //
 //	p.AddPassthrough("output_key01")
 func (p *Parallel) AddPassthrough(outputKey string, opts ...GraphAddNodeOpt) *Parallel {
-	return p.addNode(outputKey, toPassthroughNode(append(opts, WithOutputKey(outputKey))...))
+	gNode, options := toPassthroughNode(append(opts, WithOutputKey(outputKey))...)
+	return p.addNode(outputKey, gNode, options)
 }
 
-func (p *Parallel) addNode(outputKey string, node *graphNode) *Parallel {
+func (p *Parallel) addNode(outputKey string, node *graphNode, options *graphAddNodeOpts) *Parallel {
 	if p.err != nil {
 		return p
 	}
@@ -211,7 +222,7 @@ func (p *Parallel) addNode(outputKey string, node *graphNode) *Parallel {
 	}
 
 	node.nodeInfo.outputKey = outputKey
-	p.nodes = append(p.nodes, node)
+	p.nodes = append(p.nodes, nodeOptionsPair{node, options})
 	p.outputKeys[outputKey] = true // nolint: byted_use_struct_without_nilcheck, byted_use_map_without_nilcheck
 	return p
 }

@@ -32,14 +32,11 @@ import (
 type graphCompileOptions struct {
 	maxRunSteps     int
 	graphName       string
-	graphKey        string
 	nodeTriggerMode NodeTriggerMode // default to AnyPredecessor (pregel)
 
 	callbacks []GraphCompileCallback
 
 	origOpts []GraphCompileOption
-
-	component component
 }
 
 func newGraphCompileOptions(opts ...GraphCompileOption) *graphCompileOptions {
@@ -95,7 +92,7 @@ type runner struct {
 	runtimeCheckBranches map[string][]bool
 }
 
-func (r *runner) toComposableRunnable() (*composableRunnable, error) {
+func (r *runner) toComposableRunnable() *composableRunnable {
 	cr := &composableRunnable{
 		i: func(ctx context.Context, input any, opts ...any) (output any, err error) {
 			tos, err := convertOption[Option](opts...)
@@ -125,7 +122,7 @@ func (r *runner) toComposableRunnable() (*composableRunnable, error) {
 	cr.i = genericInvokeWithCallbacks(cr.i)
 	cr.t = genericTransformWithCallbacks(cr.t)
 
-	return cr, nil
+	return cr
 }
 
 func (r *runner) buildChannels() map[string]channel {

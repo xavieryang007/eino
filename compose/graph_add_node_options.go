@@ -19,19 +19,19 @@ package compose
 type graphAddNodeOpts struct {
 	nodeOptions *nodeOptions
 	processor   *processorOpts
+
+	needState bool
 }
 
 // GraphAddNodeOpt is a functional option type for adding a node to a graph.
-// eg.
+// e.g.
 //
 //	graph.AddNode("node_name", node, compose.WithInputKey("input_key"), compose.WithOutputKey("output_key"))
 type GraphAddNodeOpt func(o *graphAddNodeOpts)
 
 type nodeOptions struct {
-	// same as graphNode.name
 	nodeName string
 
-	// same as graphNode.key
 	nodeKey string
 
 	inputKey  string
@@ -74,7 +74,7 @@ func WithOutputKey(k string) GraphAddNodeOpt {
 }
 
 // WithGraphCompileOptions when the node is an AnyGraph, use this option to set compile option for the node.
-// eg.
+// e.g.
 //
 //	graph.AddNode("node_name", node, compose.WithGraphCompileOptions(compose.WithGraphName("my_sub_graph")))
 func WithGraphCompileOptions(opts ...GraphCompileOption) GraphAddNodeOpt {
@@ -84,46 +84,50 @@ func WithGraphCompileOptions(opts ...GraphCompileOption) GraphAddNodeOpt {
 }
 
 // WithStatePreHandler modify node's input of I according to state S and input or store input information into state, and it's thread-safe.
-// notice: this option is only for StateGraph. it will cause an error when passed to Graph.
+// notice: this option requires Graph to be created with WithGenLocalState option.
 // I: input type of the Node like ChatModel, Lambda, Retriever etc.
-// S: state type of StateGraph
+// S: state type defined in WithGenLocalState
 func WithStatePreHandler[I, S any](pre StatePreHandler[I, S]) GraphAddNodeOpt {
 	return func(o *graphAddNodeOpts) {
 		o.processor.statePreHandler = convertPreHandler(pre)
+		o.needState = true
 	}
 }
 
 // WithStatePostHandler modify node's output of O according to state S and output or store output information into state, and it's thread-safe.
-// notice: this option is only for StateGraph. it will cause an error when passed to Graph.
+// notice: this option requires Graph to be created with WithGenLocalState option.
 // O: output type of the Node like ChatModel, Lambda, Retriever etc.
-// S: state type of StateGraph
+// S: state type defined in WithGenLocalState
 func WithStatePostHandler[O, S any](post StatePostHandler[O, S]) GraphAddNodeOpt {
 	return func(o *graphAddNodeOpts) {
 		o.processor.statePostHandler = convertPostHandler(post)
+		o.needState = true
 	}
 }
 
 // WithStreamStatePreHandler modify node's streaming input of I according to state S and input or store input information into state, and it's thread-safe.
-// notice: this option is only for StateGraph. it will cause an error when passed to Graph.
+// notice: this option requires Graph to be created with WithGenLocalState option.
 // when to use: when upstream node's output is an actual stream, and you want the current node's input to remain an actual stream after state pre handler.
 // caution: while StreamStatePreHandler is thread safe, modifying state within your own goroutine is NOT.
 // I: input type of the Node like ChatModel, Lambda, Retriever etc.
-// S: state type of StateGraph
+// S: state type defined in WithGenLocalState
 func WithStreamStatePreHandler[I, S any](pre StreamStatePreHandler[I, S]) GraphAddNodeOpt {
 	return func(o *graphAddNodeOpts) {
 		o.processor.statePreHandler = streamConvertPreHandler(pre)
+		o.needState = true
 	}
 }
 
 // WithStreamStatePostHandler modify node's streaming output of O according to state S and output or store output information into state, and it's thread-safe.
-// notice: this option is only for StateGraph. it will cause an error when passed to Graph.
+// notice: this option requires Graph to be created with WithGenLocalState option.
 // when to use: when current node's output is an actual stream, and you want the downstream node's input to remain an actual stream after state post handler.
 // caution: while StreamStatePostHandler is thread safe, modifying state within your own goroutine is NOT.
 // O: output type of the Node like ChatModel, Lambda, Retriever etc.
-// S: state type of StateGraph
+// S: state type defined in WithGenLocalState
 func WithStreamStatePostHandler[O, S any](post StreamStatePostHandler[O, S]) GraphAddNodeOpt {
 	return func(o *graphAddNodeOpts) {
 		o.processor.statePostHandler = streamConvertPostHandler(post)
+		o.needState = true
 	}
 }
 

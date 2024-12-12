@@ -37,8 +37,6 @@ type streamReaderPacker[T any] struct {
 	sr *schema.StreamReader[T]
 }
 
-func (srp streamReaderPacker[T]) thisIsStreamReader() {}
-
 func (srp streamReaderPacker[T]) close() {
 	srp.sr.Close()
 }

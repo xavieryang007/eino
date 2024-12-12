@@ -49,10 +49,6 @@ type nodeInfo struct {
 	// if not set, it will be inferred from the component type and component name
 	name string
 
-	// node key: the identity key of the node in a graph
-	// passed from WithNodeKey()
-	key string
-
 	inputKey  string
 	outputKey string
 
@@ -72,11 +68,6 @@ type graphNode struct {
 
 	instance any
 	opts     []GraphAddNodeOpt
-}
-
-func (gn *graphNode) isPassthrough() bool {
-	// priority follow compile
-	return gn.g == nil && gn.cr != nil && gn.cr.isPassthrough
 }
 
 func (gn *graphNode) inputType() reflect.Type {
@@ -105,10 +96,6 @@ func (gn *graphNode) outputType() reflect.Type {
 	}
 
 	return nil
-}
-
-func (gn *graphNode) setOutputKey(key string) {
-	gn.nodeInfo.outputKey = key
 }
 
 func (gn *graphNode) compileIfNeeded(ctx context.Context) (*composableRunnable, error) {
@@ -172,17 +159,16 @@ func parseExecutorInfoFromComponent(c component, executor any) *executorMeta {
 	}
 }
 
-func getNodeInfo(opts ...GraphAddNodeOpt) *nodeInfo {
+func getNodeInfo(opts ...GraphAddNodeOpt) (*nodeInfo, *graphAddNodeOpts) {
 
 	opt := getGraphAddNodeOpts(opts...)
 
 	return &nodeInfo{
 		name:          opt.nodeOptions.nodeName,
-		key:           opt.nodeOptions.nodeKey,
 		inputKey:      opt.nodeOptions.inputKey,
 		outputKey:     opt.nodeOptions.outputKey,
 		preProcessor:  opt.processor.statePreHandler,
 		postProcessor: opt.processor.statePostHandler,
 		compileOption: newGraphCompileOptions(opt.nodeOptions.graphCompileOption...),
-	}
+	}, opt
 }

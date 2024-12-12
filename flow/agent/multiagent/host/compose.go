@@ -40,7 +40,8 @@ func NewMultiAgent(ctx context.Context, config *MultiAgentConfig) (*MultiAgent, 
 		return nil, err
 	}
 
-	g := compose.NewStateGraph[[]*schema.Message, *schema.Message](func(context.Context) *state { return &state{} })
+	g := compose.NewGraph[[]*schema.Message, *schema.Message](
+		compose.WithGenLocalState(func(context.Context) *state { return &state{} }))
 
 	agentTools := make([]*schema.ToolInfo, 0, len(config.Specialists))
 	agentMap := make(map[string]bool, len(config.Specialists)+1)
@@ -92,7 +93,7 @@ func NewMultiAgent(ctx context.Context, config *MultiAgentConfig) (*MultiAgent, 
 	}, nil
 }
 
-func addSpecialistAgent(specialist *Specialist, g *compose.StateGraph[[]*schema.Message, *schema.Message, *state]) error {
+func addSpecialistAgent(specialist *Specialist, g *compose.Graph[[]*schema.Message, *schema.Message]) error {
 	if specialist.Invokable != nil || specialist.Streamable != nil {
 		lambda, err := compose.AnyLambda(specialist.Invokable, specialist.Streamable, nil, nil, compose.WithLambdaType("Specialist"))
 		if err != nil {
@@ -123,7 +124,7 @@ func addSpecialistAgent(specialist *Specialist, g *compose.StateGraph[[]*schema.
 	return g.AddEdge(specialist.Name, compose.END)
 }
 
-func addHostAgent(config *MultiAgentConfig, agentTools []*schema.ToolInfo, g *compose.StateGraph[[]*schema.Message, *schema.Message, *state]) error {
+func addHostAgent(config *MultiAgentConfig, agentTools []*schema.ToolInfo, g *compose.Graph[[]*schema.Message, *schema.Message]) error {
 	if err := config.Host.ChatModel.BindTools(agentTools); err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func addHostAgent(config *MultiAgentConfig, agentTools []*schema.ToolInfo, g *co
 	return g.AddEdge(compose.START, hostName)
 }
 
-func addDirectAnswerBranch(convertorName string, g *compose.StateGraph[[]*schema.Message, *schema.Message, *state]) error {
+func addDirectAnswerBranch(convertorName string, g *compose.Graph[[]*schema.Message, *schema.Message]) error {
 	// handles the case where the host agent returns a direct answer, instead of handling off to any specialist
 	branch := compose.NewStreamGraphBranch(func(ctx context.Context, sr *schema.StreamReader[*schema.Message]) (endNode string, err error) {
 		defer sr.Close()
@@ -190,7 +191,7 @@ func addDirectAnswerBranch(convertorName string, g *compose.StateGraph[[]*schema
 	return g.AddBranch(hostName, branch)
 }
 
-func addSpecialistsBranch(convertorName string, agentMap map[string]bool, g *compose.StateGraph[[]*schema.Message, *schema.Message, *state]) error {
+func addSpecialistsBranch(convertorName string, agentMap map[string]bool, g *compose.Graph[[]*schema.Message, *schema.Message]) error {
 	branch := compose.NewGraphBranch(func(ctx context.Context, input []*schema.Message) (string, error) {
 		if len(input) != 1 {
 			return "", fmt.Errorf("host agent output %d messages, but expected 1", len(input))

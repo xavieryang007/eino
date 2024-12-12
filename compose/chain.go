@@ -40,9 +40,6 @@ func NewChain[I, O any](opts ...NewGraphOption) *Chain[I, O] {
 		gg: NewGraph[I, O](opts...),
 	}
 
-	ch.gg.graph.addNodeChecker = nodeCheckerOfForbidProcessor(baseNodeChecker)
-	ch.gg.graph.runtimeGraphKey = defaultGraphKey()
-
 	ch.gg.cmp = ComponentOfChain
 
 	return ch
@@ -82,35 +79,33 @@ type Chain[I, O any] struct {
 	nodeIdx    int
 
 	preNodeKeys []string
+
+	hasEnd bool
 }
+
+// ErrChainCompiled is returned when attempting to modify a chain after it has been compiled
+var ErrChainCompiled = errors.New("chain has been compiled, cannot be modified")
 
 // implements AnyGraph.
 func (c *Chain[I, O]) compile(ctx context.Context, option *graphCompileOptions) (*composableRunnable, error) {
-	if c.err != nil {
-		return nil, c.err
+	if err := c.addEndIfNeeded(); err != nil {
+		return nil, err
 	}
-
-	if !c.gg.isFrozen() {
-		err := c.addEnds()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	c.gg.compileChecker = wrapCompileChecker(c.gg.compileChecker, func(options *graphCompileOptions) error {
-		if len(option.nodeTriggerMode) != 0 && option.nodeTriggerMode != AnyPredecessor {
-			return errors.New("only support AnyPredecessor in chain") // dag not support branch
-		}
-
-		return nil
-	})
 
 	return c.gg.compile(ctx, option)
 }
 
-// addEnds add END edge of the chain/graph.
+// addEndIfNeeded add END edge of the chain/graph.
 // only run once when compiling.
-func (c *Chain[I, O]) addEnds() error {
+func (c *Chain[I, O]) addEndIfNeeded() error {
+	if c.hasEnd {
+		return nil
+	}
+
+	if c.err != nil {
+		return c.err
+	}
+
 	if len(c.preNodeKeys) == 0 {
 		return fmt.Errorf("pre node keys not set, number of nodes in chain= %d", len(c.gg.nodes))
 	}
@@ -121,6 +116,8 @@ func (c *Chain[I, O]) addEnds() error {
 			return err
 		}
 	}
+
+	c.hasEnd = true
 
 	return nil
 }
@@ -156,31 +153,11 @@ func (c *Chain[I, O]) component() component {
 //		r.Collect(ctx, inputReader) // stream in => pong
 //		r.Transform(ctx, inputReader) // stream in => stream out
 func (c *Chain[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (Runnable[I, O], error) {
-	if c.err != nil {
-		return nil, c.err
-	}
-
-	if !c.gg.isFrozen() {
-		err := c.addEnds()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	c.gg.compileChecker = wrapCompileChecker(c.gg.compileChecker, func(options *graphCompileOptions) error {
-		if len(options.nodeTriggerMode) != 0 && options.nodeTriggerMode != AnyPredecessor {
-			return errors.New("only support AnyPredecessor in chain") // dag not support branch
-		}
-
-		return nil
-	})
-
-	tr, err := c.gg.Compile(ctx, opts...)
-	if err != nil {
+	if err := c.addEndIfNeeded(); err != nil {
 		return nil, err
 	}
 
-	return tr, nil
+	return c.gg.Compile(ctx, opts...)
 }
 
 // AppendChatModel add a ChatModel node to the chain.
@@ -190,9 +167,8 @@ func (c *Chain[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 //	if err != nil {...}
 //	chain.AppendChatModel(model)
 func (c *Chain[I, O]) AppendChatModel(node model.ChatModel, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toChatModelNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toChatModelNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -206,9 +182,8 @@ func (c *Chain[I, O]) AppendChatModel(node model.ChatModel, opts ...GraphAddNode
 //
 //	chain.AppendChatTemplate(chatTemplate)
 func (c *Chain[I, O]) AppendChatTemplate(node prompt.ChatTemplate, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toChatTemplateNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toChatTemplateNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -221,9 +196,8 @@ func (c *Chain[I, O]) AppendChatTemplate(node prompt.ChatTemplate, opts ...Graph
 //
 //	chain.AppendToolsNode(toolsNode)
 func (c *Chain[I, O]) AppendToolsNode(node *ToolsNode, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toToolsNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toToolsNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -234,9 +208,8 @@ func (c *Chain[I, O]) AppendToolsNode(node *ToolsNode, opts ...GraphAddNodeOpt) 
 //
 //	chain.AppendDocumentTransformer(markdownSplitter)
 func (c *Chain[I, O]) AppendDocumentTransformer(node document.Transformer, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toDocumentTransformerNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toDocumentTransformerNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -251,9 +224,8 @@ func (c *Chain[I, O]) AppendDocumentTransformer(node document.Transformer, opts 
 // to create a Lambda node, you need to use `compose.AnyLambda` or `compose.InvokableLambda` or `compose.StreamableLambda` or `compose.TransformableLambda`.
 // if you want this node has real stream output, you need to use `compose.StreamableLambda` or `compose.TransformableLambda`, for example.
 func (c *Chain[I, O]) AppendLambda(node *Lambda, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toLambdaNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toLambdaNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -264,9 +236,8 @@ func (c *Chain[I, O]) AppendLambda(node *Lambda, opts ...GraphAddNodeOpt) *Chain
 //	if err != nil {...}
 //	chain.AppendEmbedding(embedder)
 func (c *Chain[I, O]) AppendEmbedding(node embedding.Embedder, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toEmbeddingNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toEmbeddingNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -284,18 +255,16 @@ func (c *Chain[I, O]) AppendEmbedding(node embedding.Embedder, opts ...GraphAddN
 //		if err != nil {...}
 //		chain.AppendRetriever(retriever)
 func (c *Chain[I, O]) AppendRetriever(node retriever.Retriever, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toRetrieverNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toRetrieverNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
 // AppendLoaderSplitter add a LoaderSplitter node to the chain.
 // Deprecated: use AppendLoader instead.
 func (c *Chain[I, O]) AppendLoaderSplitter(node document.LoaderSplitter, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toLoaderSplitterNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toLoaderSplitterNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -306,8 +275,8 @@ func (c *Chain[I, O]) AppendLoaderSplitter(node document.LoaderSplitter, opts ..
 //	if err != nil {...}
 //	chain.AppendLoader(loader)
 func (c *Chain[I, O]) AppendLoader(node document.Loader, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toLoaderNode(node, opts...)
-	c.addNode(n)
+	gNode, options := toLoaderNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -324,9 +293,8 @@ func (c *Chain[I, O]) AppendLoader(node document.Loader, opts ...GraphAddNodeOpt
 //
 //	chain.AppendIndexer(indexer)
 func (c *Chain[I, O]) AppendIndexer(node indexer.Indexer, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toIndexerNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toIndexerNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -375,8 +343,8 @@ func (c *Chain[I, O]) AppendBranch(b *ChainBranch) *Chain[I, O] { // nolint: byt
 
 	for key := range b.key2BranchNode {
 		node := b.key2BranchNode[key]
-		nodeKey := fmt.Sprintf("%s[%s]_%s", pName, key, node.getNodeName())
-		if err := c.gg.addNode(nodeKey, node); err != nil {
+		nodeKey := fmt.Sprintf("%s[%s]_%s", pName, key, node.First.getNodeName())
+		if err := c.gg.addNode(nodeKey, node.First, node.Second); err != nil {
 			c.reportError(fmt.Errorf("add branch node[%s] to chain failed: %w", nodeKey, err))
 			return c
 		}
@@ -503,8 +471,8 @@ func (c *Chain[I, O]) AppendParallel(p *Parallel) *Chain[I, O] {
 
 	for i := range p.nodes {
 		node := p.nodes[i]
-		nodeKey := fmt.Sprintf("%s[%d]_%s", pName, i, node.getNodeName())
-		if err := c.gg.addNode(nodeKey, node); err != nil {
+		nodeKey := fmt.Sprintf("%s[%d]_%s", pName, i, node.First.getNodeName())
+		if err := c.gg.addNode(nodeKey, node.First, node.Second); err != nil {
 			c.reportError(fmt.Errorf("add parallel node[%s] to chain failed: %w", nodeKey, err))
 			return c
 		}
@@ -527,9 +495,8 @@ func (c *Chain[I, O]) AppendParallel(p *Parallel) *Chain[I, O] {
 //	graph := compose.NewGraph[string, string]()
 //	chain.AppendGraph(graph)
 func (c *Chain[I, O]) AppendGraph(node AnyGraph, opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toAnyGraphNode(node, opts...)
-
-	c.addNode(n)
+	gNode, options := toAnyGraphNode(node, opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -539,9 +506,8 @@ func (c *Chain[I, O]) AppendGraph(node AnyGraph, opts ...GraphAddNodeOpt) *Chain
 //
 //	chain.AppendPassthrough()
 func (c *Chain[I, O]) AppendPassthrough(opts ...GraphAddNodeOpt) *Chain[I, O] {
-	n := toPassthroughNode(opts...)
-
-	c.addNode(n)
+	gNode, options := toPassthroughNode(opts...)
+	c.addNode(gNode, options)
 	return c
 }
 
@@ -568,8 +534,13 @@ func (c *Chain[I, O]) reportError(err error) {
 
 // addNode.
 // add a node to the chain.
-func (c *Chain[I, O]) addNode(node *graphNode) {
+func (c *Chain[I, O]) addNode(node *graphNode, options *graphAddNodeOpts) {
 	if c.err != nil {
+		return
+	}
+
+	if c.gg.compiled {
+		c.reportError(ErrChainCompiled)
 		return
 	}
 
@@ -578,11 +549,12 @@ func (c *Chain[I, O]) addNode(node *graphNode) {
 		return
 	}
 
-	nodeKey := c.nextNodeKey(node.getNodeName())
-	if node.nodeInfo.key != "" {
-		nodeKey = node.nodeInfo.key
+	nodeKey := options.nodeOptions.nodeKey
+	if nodeKey == "" {
+		nodeKey = c.nextNodeKey(node.getNodeName())
 	}
-	err := c.gg.addNode(nodeKey, node)
+
+	err := c.gg.addNode(nodeKey, node, options)
 	if err != nil {
 		c.reportError(err)
 		return

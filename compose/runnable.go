@@ -25,7 +25,7 @@ import (
 	"github.com/cloudwego/eino/utils/generic"
 )
 
-// Runnable is the interface for an executable object. Graph, StateGraph, Chain, StateChain can be compiled into Runnable.
+// Runnable is the interface for an executable object. Graph, Chain can be compiled into Runnable.
 // runnable is the core conception of eino, we do downgrade compatibility for four data flow patterns,
 // and can automatically connect components that only implement one or more methods.
 // eg, if a component only implements Stream() method, you can still call Invoke() to convert stream output to invoke output.

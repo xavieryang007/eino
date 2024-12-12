@@ -38,7 +38,6 @@ type GraphNodeInfo struct {
 // it is used in compile callback for user to get the node info and instance.
 // you may need all details info of the graph for observation.
 type GraphInfo struct {
-	Key                   string // graph key, default $CallerFunctionName:$LineNumber
 	CompileOptions        []GraphCompileOption
 	Nodes                 map[string]GraphNodeInfo // node key -> node info
 	Edges                 map[string][]string      // edge start node key -> edge end node key

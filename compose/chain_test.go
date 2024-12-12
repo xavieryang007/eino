@@ -572,12 +572,12 @@ func TestParallelMultiNodes(t *testing.T) {
 	assert.NotNil(t, p.err)
 
 	p = NewParallel()
-	p.addNode("k", nil)
+	p.addNode("k", nil, nil)
 	assert.NotNil(t, p.err)
 
 	p = &Parallel{
 		outputKeys: nil,
 	}
-	p.addNode("k", &graphNode{})
+	p.addNode("k", &graphNode{}, nil)
 	assert.NotNil(t, p.err)
 }

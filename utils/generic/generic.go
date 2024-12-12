@@ -64,3 +64,8 @@ func TypeOf[T any]() reflect.Type {
 func PtrOf[T any](v T) *T {
 	return &v
 }
+
+type Pair[F, S any] struct {
+	First  F
+	Second S
+}

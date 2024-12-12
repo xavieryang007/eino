@@ -27,13 +27,16 @@ import (
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/utils/generic"
 )
+
+type nodeOptionsPair generic.Pair[*graphNode, *graphAddNodeOpts]
 
 // ChainBranch represents a conditional branch in a chain of operations.
 // It allows for dynamic routing of execution based on a condition.
 // All branches within ChainBranch are expected to either end the Chain, or converge to another node in the Chain.
 type ChainBranch struct {
-	key2BranchNode map[string]*graphNode
+	key2BranchNode map[string]nodeOptionsPair
 	condition      *composableRunnable
 	err            error
 }
@@ -58,7 +61,7 @@ func NewChainBranch[T any](cond GraphBranchCondition[T]) *ChainBranch {
 	}
 
 	return &ChainBranch{
-		key2BranchNode: make(map[string]*graphNode),
+		key2BranchNode: make(map[string]nodeOptionsPair),
 		condition:      runnableLambda(invokeCond, nil, nil, nil, false),
 	}
 }
@@ -82,7 +85,7 @@ func NewStreamChainBranch[T any](cond StreamGraphBranchCondition[T]) *ChainBranc
 	}
 
 	return &ChainBranch{
-		key2BranchNode: make(map[string]*graphNode),
+		key2BranchNode: make(map[string]nodeOptionsPair),
 		condition:      runnableLambda(nil, nil, collectCon, nil, false),
 	}
 }
@@ -99,7 +102,8 @@ func NewStreamChainBranch[T any](cond StreamGraphBranchCondition[T]) *ChainBranc
 //	cb.AddChatModel("chat_model_key_01", chatModel01)
 //	cb.AddChatModel("chat_model_key_02", chatModel02)
 func (cb *ChainBranch) AddChatModel(key string, node model.ChatModel, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toChatModelNode(node, opts...))
+	gNode, options := toChatModelNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddChatTemplate adds a ChatTemplate node to the branch.
@@ -119,7 +123,8 @@ func (cb *ChainBranch) AddChatModel(key string, node model.ChatModel, opts ...Gr
 //
 //	cb.AddChatTemplate("chat_template_key_02", chatTemplate2)
 func (cb *ChainBranch) AddChatTemplate(key string, node prompt.ChatTemplate, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toChatTemplateNode(node, opts...))
+	gNode, options := toChatTemplateNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddToolsNode adds a ToolsNode to the branch.
@@ -131,7 +136,8 @@ func (cb *ChainBranch) AddChatTemplate(key string, node prompt.ChatTemplate, opt
 //
 //	cb.AddToolsNode("tools_node_key", toolsNode)
 func (cb *ChainBranch) AddToolsNode(key string, node *ToolsNode, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toToolsNode(node, opts...))
+	gNode, options := toToolsNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddLambda adds a Lambda node to the branch.
@@ -144,7 +150,8 @@ func (cb *ChainBranch) AddToolsNode(key string, node *ToolsNode, opts ...GraphAd
 //
 //	cb.AddLambda("lambda_node_key", compose.InvokeLambda(lambdaFunc))
 func (cb *ChainBranch) AddLambda(key string, node *Lambda, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toLambdaNode(node, opts...))
+	gNode, options := toLambdaNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddEmbedding adds an Embedding node to the branch.
@@ -156,7 +163,8 @@ func (cb *ChainBranch) AddLambda(key string, node *Lambda, opts ...GraphAddNodeO
 //
 //	cb.AddEmbedding("embedding_node_key", embeddingNode)
 func (cb *ChainBranch) AddEmbedding(key string, node embedding.Embedder, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toEmbeddingNode(node, opts...))
+	gNode, options := toEmbeddingNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddRetriever adds a Retriever node to the branch.
@@ -168,13 +176,15 @@ func (cb *ChainBranch) AddEmbedding(key string, node embedding.Embedder, opts ..
 //
 //	cb.AddRetriever("retriever_node_key", retriever)
 func (cb *ChainBranch) AddRetriever(key string, node retriever.Retriever, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toRetrieverNode(node, opts...))
+	gNode, options := toRetrieverNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddLoaderSplitter adds a LoaderSplitter node to the branch.
 // Deprecated: use AddLoader instead.
 func (cb *ChainBranch) AddLoaderSplitter(key string, node document.LoaderSplitter, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toLoaderSplitterNode(node, opts...))
+	gNode, options := toLoaderSplitterNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddLoader adds a Loader node to the branch.
@@ -187,7 +197,8 @@ func (cb *ChainBranch) AddLoaderSplitter(key string, node document.LoaderSplitte
 //
 //	cb.AddLoader("loader_node_key", loader)
 func (cb *ChainBranch) AddLoader(key string, node document.Loader, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toLoaderNode(node, opts...))
+	gNode, options := toLoaderNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddIndexer adds an Indexer node to the branch.
@@ -199,7 +210,8 @@ func (cb *ChainBranch) AddLoader(key string, node document.Loader, opts ...Graph
 //
 //	cb.AddIndexer("indexer_node_key", indexer)
 func (cb *ChainBranch) AddIndexer(key string, node indexer.Indexer, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toIndexerNode(node, opts...))
+	gNode, options := toIndexerNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddDocumentTransformer adds an Document Transformer node to the branch.
@@ -209,7 +221,8 @@ func (cb *ChainBranch) AddIndexer(key string, node indexer.Indexer, opts ...Grap
 //
 //	cb.AddDocumentTransformer("document_transformer_node_key", markdownSplitter)
 func (cb *ChainBranch) AddDocumentTransformer(key string, node document.Transformer, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toDocumentTransformerNode(node, opts...))
+	gNode, options := toDocumentTransformerNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddGraph adds a generic Graph node to the branch.
@@ -219,7 +232,8 @@ func (cb *ChainBranch) AddDocumentTransformer(key string, node document.Transfor
 //
 //	cb.AddGraph("graph_node_key", graph)
 func (cb *ChainBranch) AddGraph(key string, node AnyGraph, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toAnyGraphNode(node, opts...))
+	gNode, options := toAnyGraphNode(node, opts...)
+	return cb.addNode(key, gNode, options)
 }
 
 // AddPassthrough adds a Passthrough node to the branch.
@@ -227,16 +241,17 @@ func (cb *ChainBranch) AddGraph(key string, node AnyGraph, opts ...GraphAddNodeO
 //
 //	cb.AddPassthrough("passthrough_node_key")
 func (cb *ChainBranch) AddPassthrough(key string, opts ...GraphAddNodeOpt) *ChainBranch {
-	return cb.addNode(key, toPassthroughNode(opts...))
+	gNode, options := toPassthroughNode(opts...)
+	return cb.addNode(key, gNode, options)
 }
 
-func (cb *ChainBranch) addNode(key string, node *graphNode) *ChainBranch {
+func (cb *ChainBranch) addNode(key string, node *graphNode, options *graphAddNodeOpts) *ChainBranch {
 	if cb.err != nil {
 		return cb
 	}
 
 	if cb.key2BranchNode == nil {
-		cb.key2BranchNode = make(map[string]*graphNode)
+		cb.key2BranchNode = make(map[string]nodeOptionsPair)
 	}
 
 	_, ok := cb.key2BranchNode[key]
@@ -245,7 +260,7 @@ func (cb *ChainBranch) addNode(key string, node *graphNode) *ChainBranch {
 		return cb
 	}
 
-	cb.key2BranchNode[key] = node // nolint: byted_use_map_without_nilcheck
+	cb.key2BranchNode[key] = nodeOptionsPair{node, options} // nolint: byted_use_map_without_nilcheck
 
 	return cb
 }

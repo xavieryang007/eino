@@ -135,12 +135,14 @@ func (r *Agent) build(ctx context.Context, config *AgentConfig) (compose.Runnabl
 	}
 
 	// graph
-	graph := compose.NewStateGraph[[]*schema.Message, *schema.Message](func(ctx context.Context) *nodeState {
-		s := &nodeState{
-			Messages: make([]*schema.Message, 0, 3),
-		}
-		return s
-	})
+	graph := compose.NewGraph[[]*schema.Message, *schema.Message](
+		compose.WithGenLocalState(
+			func(ctx context.Context) *nodeState {
+				s := &nodeState{
+					Messages: make([]*schema.Message, 0, 3),
+				}
+				return s
+			}))
 
 	err = graph.AddChatModelNode(nodeKeyChatModel, config.Model,
 		compose.WithStatePreHandler(func(ctx context.Context, input []*schema.Message, state *nodeState) ([]*schema.Message, error) {

@@ -48,19 +48,11 @@ import (
 //		return out, nil
 //	}))
 func NewStateGraph[I, O, S any](gen GenLocalState[S]) *StateGraph[I, O, S] {
-	sg := &StateGraph[I, O, S]{NewGraph[I, O]()}
+	sg := &StateGraph[I, O, S]{NewGraph[I, O](WithGenLocalState(gen))}
 
 	sg.graph.runtimeGraphKey = defaultGraphKey()
-	sg.runCtx = func(ctx context.Context) context.Context {
-		state := gen(ctx)
-		return context.WithValue(ctx, stateKey{}, state)
-	}
 
-	sg.addNodeChecker = nodeCheckerOfForbidNodeKey(baseNodeChecker)
-
-	sg.compileChecker = func(options *graphCompileOptions) error {
-		return nil
-	}
+	sg.cmp = ComponentOfStateGraph
 
 	return sg
 }
@@ -68,17 +60,6 @@ func NewStateGraph[I, O, S any](gen GenLocalState[S]) *StateGraph[I, O, S] {
 // StateGraph is a graph that shares state between nodes. It's useful when you want to share some data across nodes.
 type StateGraph[I, O, S any] struct {
 	*Graph[I, O]
-}
-
-func (s *StateGraph[I, O, S]) component() component {
-	return ComponentOfStateGraph
-}
-
-// Compile the graph to runnable.
-func (s *StateGraph[I, O, S]) Compile(ctx context.Context, opts ...GraphCompileOption) (Runnable[I, O], error) {
-	opts = append(opts, withComponent(s.component()))
-
-	return s.Graph.Compile(ctx, opts...)
 }
 
 // NewStateChain creates a new state chain. It requires a func of GenLocalState to generate the state.
@@ -99,18 +80,15 @@ func (s *StateGraph[I, O, S]) Compile(ctx context.Context, opts ...GraphCompileO
 //		return out, nil
 //	}))
 func NewStateChain[I, O, S any](gen GenLocalState[S]) *StateChain[I, O, S] {
-	sc := &StateChain[I, O, S]{NewChain[I, O]()}
-
-	sc.gg.runCtx = func(ctx context.Context) context.Context {
-		state := gen(ctx)
-		return context.WithValue(ctx, stateKey{}, state)
-	}
+	sc := &StateChain[I, O, S]{NewChain[I, O](WithGenLocalState(gen))}
 
 	sc.gg.addNodeChecker = baseNodeChecker
 
 	sc.gg.compileChecker = func(options *graphCompileOptions) error {
 		return nil
 	}
+
+	sc.gg.cmp = ComponentOfStateChain
 
 	return sc
 }
@@ -120,17 +98,6 @@ func NewStateChain[I, O, S any](gen GenLocalState[S]) *StateChain[I, O, S] {
 // you can use WithPreHandler and WithPostHandler to do something with state of this chain.
 type StateChain[I, O, S any] struct {
 	*Chain[I, O]
-}
-
-func (s *StateChain[I, O, S]) component() component {
-	return ComponentOfStateChain
-}
-
-// Compile the chain to runnable.
-func (s *StateChain[I, O, S]) Compile(ctx context.Context, opts ...GraphCompileOption) (Runnable[I, O], error) {
-	opts = append(opts, withComponent(s.component()))
-
-	return s.Chain.Compile(ctx, opts...)
 }
 
 // GenLocalState is a function that generates the state.

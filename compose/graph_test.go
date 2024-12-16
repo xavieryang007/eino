@@ -1193,7 +1193,7 @@ func TestGraphCompileCallback(t *testing.T) {
 		assert.NoError(t, err)
 		expected := &GraphInfo{
 			Key:            "k1",
-			CompileOptions: append(opt, withComponent(g.component())),
+			CompileOptions: opt,
 			Nodes: map[string]GraphNodeInfo{
 				"node1": {
 					Component:        ComponentOfLambda,

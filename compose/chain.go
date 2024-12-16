@@ -35,13 +35,15 @@ import (
 )
 
 // NewChain create a chain with input/output type.
-func NewChain[I, O any]() *Chain[I, O] {
+func NewChain[I, O any](opts ...NewGraphOption) *Chain[I, O] {
 	ch := &Chain[I, O]{
-		gg: NewGraph[I, O](),
+		gg: NewGraph[I, O](opts...),
 	}
 
 	ch.gg.graph.addNodeChecker = nodeCheckerOfForbidProcessor(baseNodeChecker)
 	ch.gg.graph.runtimeGraphKey = defaultGraphKey()
+
+	ch.gg.cmp = ComponentOfChain
 
 	return ch
 }
@@ -94,6 +96,7 @@ func (c *Chain[I, O]) compile(ctx context.Context, option *graphCompileOptions) 
 			return nil, err
 		}
 	}
+
 	c.gg.compileChecker = wrapCompileChecker(c.gg.compileChecker, func(options *graphCompileOptions) error {
 		if len(option.nodeTriggerMode) != 0 && option.nodeTriggerMode != AnyPredecessor {
 			return errors.New("only support AnyPredecessor in chain") // dag not support branch
@@ -137,7 +140,7 @@ func (c *Chain[I, O]) outputType() reflect.Type {
 // compositeType returns the composite type of the chain.
 // implements AnyGraph.
 func (c *Chain[I, O]) component() component {
-	return ComponentOfChain
+	return c.gg.component()
 }
 
 // Compile to a Runnable.
@@ -156,8 +159,6 @@ func (c *Chain[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 	if c.err != nil {
 		return nil, c.err
 	}
-
-	opts = append(opts, withComponent(ComponentOfChain))
 
 	if !c.gg.isFrozen() {
 		err := c.addEnds()
@@ -582,16 +583,19 @@ func (c *Chain[I, O]) addNode(node *graphNode) {
 		nodeKey = node.nodeInfo.key
 	}
 	err := c.gg.addNode(nodeKey, node)
-	c.reportError(err)
+	if err != nil {
+		c.reportError(err)
+		return
+	}
 
 	if len(c.preNodeKeys) == 0 {
 		c.preNodeKeys = append(c.preNodeKeys, START)
 	}
 
 	for _, preNodeKey := range c.preNodeKeys {
-		err := c.gg.AddEdge(preNodeKey, nodeKey)
-		if err != nil {
-			c.reportError(err)
+		e := c.gg.AddEdge(preNodeKey, nodeKey)
+		if e != nil {
+			c.reportError(e)
 			return
 		}
 	}

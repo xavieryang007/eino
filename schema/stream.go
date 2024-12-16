@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"runtime/debug"
 	"sync"
-	"sync/atomic"
 
 	"github.com/cloudwego/eino/utils/safe"
 )
@@ -305,10 +304,6 @@ func (s *stream[T]) closeSend() {
 }
 
 func (s *stream[T]) closeRecv() {
-	if !atomic.CompareAndSwapUint32(&s.isClosed, 0, 1) {
-		return
-	}
-
 	close(s.closed)
 }
 

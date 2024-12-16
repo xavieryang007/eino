@@ -206,6 +206,7 @@ func genericTransformWithCallbacks(t transform) transform {
 		}
 
 		ctx, is = callbacks.OnStartWithStreamInput(ctx, is)
+		is.Close() // goroutine free copy buffer release
 
 		output, err = t(ctx, inArr[0], opts...)
 		if err != nil {
@@ -219,7 +220,8 @@ func genericTransformWithCallbacks(t transform) transform {
 			return outArr[0], nil
 		}
 
-		_, _ = callbacks.OnEndWithStreamOutput(ctx, os)
+		_, os = callbacks.OnEndWithStreamOutput(ctx, os)
+		os.Close()
 
 		return outArr[0], nil
 	}

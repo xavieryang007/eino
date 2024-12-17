@@ -181,11 +181,5 @@ func TestAspectInject(t *testing.T) {
 		}
 		nosr.Close()
 		assert.Equal(t, 186, cnt)
-
-		assert.True(t, NeededForTiming(ctx, TimingOnStart))
-		assert.True(t, NeededForTiming(ctx, TimingOnEnd))
-		assert.True(t, NeededForTiming(ctx, TimingOnError))
-		assert.True(t, NeededForTiming(ctx, TimingOnStartWithStreamInput))
-		assert.True(t, NeededForTiming(ctx, TimingOnEndWithStreamOutput))
 	})
 }

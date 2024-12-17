@@ -89,10 +89,6 @@ func mergeValues(vs []any) (any, error) {
 
 func invokeWithCallbacks[I, O, TOption any](i Invoke[I, O, TOption]) Invoke[I, O, TOption] {
 	return func(ctx context.Context, input I, opts ...TOption) (output O, err error) {
-		if !callbacks.Needed(ctx) {
-			return i(ctx, input, opts...)
-		}
-
 		defer func() {
 			if err != nil {
 				_ = callbacks.OnError(ctx, err)
@@ -111,10 +107,6 @@ func invokeWithCallbacks[I, O, TOption any](i Invoke[I, O, TOption]) Invoke[I, O
 
 func genericInvokeWithCallbacks(i invoke) invoke {
 	return func(ctx context.Context, input any, opts ...any) (output any, err error) {
-		if !callbacks.Needed(ctx) {
-			return i(ctx, input, opts...)
-		}
-
 		defer func() {
 			if err != nil {
 				_ = callbacks.OnError(ctx, err)
@@ -133,10 +125,6 @@ func genericInvokeWithCallbacks(i invoke) invoke {
 
 func streamWithCallbacks[I, O, TOption any](s Stream[I, O, TOption]) Stream[I, O, TOption] {
 	return func(ctx context.Context, input I, opts ...TOption) (output *schema.StreamReader[O], err error) {
-		if !callbacks.Needed(ctx) {
-			return s(ctx, input, opts...)
-		}
-
 		ctx = callbacks.OnStart(ctx, input)
 
 		output, err = s(ctx, input, opts...)
@@ -153,10 +141,6 @@ func streamWithCallbacks[I, O, TOption any](s Stream[I, O, TOption]) Stream[I, O
 
 func collectWithCallbacks[I, O, TOption any](c Collect[I, O, TOption]) Collect[I, O, TOption] {
 	return func(ctx context.Context, input *schema.StreamReader[I], opts ...TOption) (output O, err error) {
-		if !callbacks.Needed(ctx) {
-			return c(ctx, input, opts...)
-		}
-
 		defer func() {
 			if err != nil {
 				_ = callbacks.OnError(ctx, err)
@@ -174,11 +158,6 @@ func collectWithCallbacks[I, O, TOption any](c Collect[I, O, TOption]) Collect[I
 func transformWithCallbacks[I, O, TOption any](t Transform[I, O, TOption]) Transform[I, O, TOption] {
 	return func(ctx context.Context, input *schema.StreamReader[I],
 		opts ...TOption) (output *schema.StreamReader[O], err error) {
-
-		if !callbacks.Needed(ctx) {
-			return t(ctx, input, opts...)
-		}
-
 		ctx, input = callbacks.OnStartWithStreamInput(ctx, input)
 
 		output, err = t(ctx, input, opts...)
@@ -195,10 +174,6 @@ func transformWithCallbacks[I, O, TOption any](t Transform[I, O, TOption]) Trans
 
 func genericTransformWithCallbacks(t transform) transform {
 	return func(ctx context.Context, input streamReader, opts ...any) (output streamReader, err error) {
-		if !callbacks.Needed(ctx) {
-			return t(ctx, input, opts...)
-		}
-
 		inArr := input.copy(2)
 		is, ok := unpackStreamReader[callbacks.CallbackInput](inArr[1])
 		if !ok { // unexpected

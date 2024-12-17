@@ -184,8 +184,8 @@ func OnError(ctx context.Context, err error) context.Context {
 	return ctx
 }
 
-// SwitchRunInfo updates the RunInfo in the context if a previous RunInfo already exists for that context.
-func SwitchRunInfo(ctx context.Context, info *RunInfo) context.Context {
+// SetRunInfo sets the RunInfo to be passed to Handler.
+func SetRunInfo(ctx context.Context, info *RunInfo) context.Context {
 	cbm, ok := managerFromCtx(ctx)
 	if !ok {
 		return ctx
@@ -195,7 +195,7 @@ func SwitchRunInfo(ctx context.Context, info *RunInfo) context.Context {
 }
 
 // InitCallbacks initializes a new context with the provided RunInfo and handlers.
-// If successful, it returns a new context containing RunInfo and handlers; otherwise, it returns a context with a nil manager.
+// Any previously set RunInfo and Handlers for this ctx will be overwritten.
 func InitCallbacks(ctx context.Context, info *RunInfo, handlers ...Handler) context.Context {
 	mgr, ok := newManager(info, handlers...)
 	if ok {
@@ -203,32 +203,4 @@ func InitCallbacks(ctx context.Context, info *RunInfo, handlers ...Handler) cont
 	}
 
 	return ctxWithManager(ctx, nil)
-}
-
-// Needed checks if any callback handlers exist in this context.
-func Needed(ctx context.Context) bool {
-	_, cbmOK := managerFromCtx(ctx)
-	return cbmOK
-}
-
-// NeededForTiming checks if any callback handlers exist in this context that are needed for this specific timing.
-func NeededForTiming(ctx context.Context, timing CallbackTiming) bool {
-	mgr, ok := managerFromCtx(ctx)
-	if !ok {
-		return false
-	}
-
-	if len(mgr.handlers) == 0 {
-		return false
-	}
-
-	for i := 0; i < len(mgr.handlers); i++ {
-		handler := mgr.handlers[i]
-		timingChecker, ok := handler.(TimingChecker)
-		if !ok || timingChecker.Needed(ctx, mgr.runInfo, timing) {
-			return true
-		}
-	}
-
-	return false
 }

@@ -91,6 +91,17 @@ func (m *manager) withRunInfo(runInfo *RunInfo) *manager {
 	}
 }
 
+func (m *manager) appendHandlers(handlers ...Handler) *manager {
+	if m == nil {
+		return nil
+	}
+
+	return &manager{
+		handlers: append(m.handlers, handlers...),
+		runInfo:  m.runInfo,
+	}
+}
+
 // Deprecated: Manager will become the inner conception, use methods in aspect_inject.go instead
 func ManagerFromCtx(ctx context.Context) (*Manager, bool) {
 	internalM, ok := managerFromCtx(ctx)
@@ -104,7 +115,8 @@ func ManagerFromCtx(ctx context.Context) (*Manager, bool) {
 }
 
 func managerFromCtx(ctx context.Context) (*manager, bool) {
-	m, ok := ctx.Value(internal.CtxManagerKey{}).(*manager)
+	v := ctx.Value(internal.CtxManagerKey{})
+	m, ok := v.(*manager)
 	if ok && m != nil {
 		return &manager{
 			handlers: m.handlers,

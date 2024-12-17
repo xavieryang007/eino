@@ -79,5 +79,5 @@ func ctxWithRetrieverRunInfo(ctx context.Context, r retriever.Retriever) context
 
 	runInfo.Name = runInfo.Type + string(runInfo.Component)
 
-	return callbacks.SwitchRunInfo(ctx, runInfo)
+	return callbacks.SetRunInfo(ctx, runInfo)
 }

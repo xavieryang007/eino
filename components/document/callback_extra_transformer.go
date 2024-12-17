@@ -17,8 +17,6 @@
 package document
 
 import (
-	"context"
-
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/schema"
 )
@@ -66,26 +64,5 @@ func ConvTransformerCallbackOutput(src callbacks.CallbackOutput) *TransformerCal
 		}
 	default:
 		return nil
-	}
-}
-
-// TransformerCallbackHandler is the handler for the transformer callback.
-type TransformerCallbackHandler struct {
-	OnStart func(ctx context.Context, runInfo *callbacks.RunInfo, input *TransformerCallbackInput) context.Context
-	OnEnd   func(ctx context.Context, runInfo *callbacks.RunInfo, output *TransformerCallbackOutput) context.Context
-	OnError func(ctx context.Context, runInfo *callbacks.RunInfo, err error) context.Context
-}
-
-// Needed checks if the callback handler is needed for the given timing.
-func (ch *TransformerCallbackHandler) Needed(ctx context.Context, runInfo *callbacks.RunInfo, timing callbacks.CallbackTiming) bool {
-	switch timing {
-	case callbacks.TimingOnStart:
-		return ch.OnStart != nil
-	case callbacks.TimingOnEnd:
-		return ch.OnEnd != nil
-	case callbacks.TimingOnError:
-		return ch.OnError != nil
-	default:
-		return false
 	}
 }

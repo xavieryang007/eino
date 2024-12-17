@@ -21,10 +21,10 @@ import (
 	"io"
 
 	"github.com/cloudwego/eino/callbacks"
-	"github.com/cloudwego/eino/callbacks/template"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/flow/agent"
 	"github.com/cloudwego/eino/schema"
+	template "github.com/cloudwego/eino/utils/callbacks"
 )
 
 // MultiAgentCallback is the callback interface for host multi-agent.
@@ -114,7 +114,7 @@ func convertCallbacks(opts ...agent.AgentOption) callbacks.Handler {
 		return ctx
 	}
 
-	return template.NewHandlerHelper().ChatModel(&model.CallbackHandler{
+	return template.NewHandlerHelper().ChatModel(&template.ModelCallbackHandler{
 		OnEnd:                 onChatModelEnd,
 		OnEndWithStreamOutput: onChatModelEndWithStreamOutput,
 	}).Handler()

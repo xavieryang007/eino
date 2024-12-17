@@ -18,17 +18,15 @@ package react
 
 import (
 	"github.com/cloudwego/eino/callbacks"
-	"github.com/cloudwego/eino/callbacks/template"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/components/tool"
+	template "github.com/cloudwego/eino/utils/callbacks"
 )
 
 // BuildAgentCallback builds a callback handler for agent.
-// eg.
+// e.g.
 //
 //	callback := BuildAgentCallback(modelHandler, toolHandler)
 //	agent, err := react.NewAgent(ctx, &AgentConfig{})
 //	agent.Generate(ctx, input, agent.WithComposeOptions(compose.WithCallbacks(callback)))
-func BuildAgentCallback(modelHandler *model.CallbackHandler, toolHandler *tool.CallbackHandler) callbacks.Handler {
+func BuildAgentCallback(modelHandler *template.ModelCallbackHandler, toolHandler *template.ToolCallbackHandler) callbacks.Handler {
 	return template.NewHandlerHelper().ChatModel(modelHandler).Tool(toolHandler).Handler()
 }

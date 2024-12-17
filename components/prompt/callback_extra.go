@@ -17,8 +17,6 @@
 package prompt
 
 import (
-	"context"
-
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/schema"
 )
@@ -68,29 +66,5 @@ func ConvCallbackOutput(src callbacks.CallbackOutput) *CallbackOutput {
 		}
 	default:
 		return nil
-	}
-}
-
-// CallbackHandler is the handler for the callback.
-type CallbackHandler struct {
-	// OnStart is the callback function for the start of the callback.
-	OnStart func(ctx context.Context, runInfo *callbacks.RunInfo, input *CallbackInput) context.Context
-	// OnEnd is the callback function for the end of the callback.
-	OnEnd func(ctx context.Context, runInfo *callbacks.RunInfo, output *CallbackOutput) context.Context
-	// OnError is the callback function for the error of the callback.
-	OnError func(ctx context.Context, runInfo *callbacks.RunInfo, err error) context.Context
-}
-
-// Needed checks if the callback handler is needed for the given timing.
-func (ch *CallbackHandler) Needed(ctx context.Context, runInfo *callbacks.RunInfo, timing callbacks.CallbackTiming) bool {
-	switch timing {
-	case callbacks.TimingOnStart:
-		return ch.OnStart != nil
-	case callbacks.TimingOnEnd:
-		return ch.OnEnd != nil
-	case callbacks.TimingOnError:
-		return ch.OnError != nil
-	default:
-		return false
 	}
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package template
+package callbacks
 
 import (
 	"context"
@@ -37,10 +37,10 @@ import (
 )
 
 func TestNewComponentTemplate(t *testing.T) {
-	t.Run("test no fallback", func(t *testing.T) {
+	t.Run("TestNewComponentTemplate", func(t *testing.T) {
 		cnt := 0
 		tpl := NewHandlerHelper()
-		tpl.ChatModel(&model.CallbackHandler{
+		tpl.ChatModel(&ModelCallbackHandler{
 			OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *model.CallbackInput) context.Context {
 				cnt++
 				return ctx
@@ -58,7 +58,7 @@ func TestNewComponentTemplate(t *testing.T) {
 				cnt++
 				return ctx
 			}}).
-			Embedding(&embedding.CallbackHandler{
+			Embedding(&EmbeddingCallbackHandler{
 				OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *embedding.CallbackInput) context.Context {
 					cnt++
 					return ctx
@@ -72,7 +72,7 @@ func TestNewComponentTemplate(t *testing.T) {
 					return ctx
 				},
 			}).
-			Prompt(&prompt.CallbackHandler{
+			Prompt(&PromptCallbackHandler{
 				OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *prompt.CallbackInput) context.Context {
 					cnt++
 					return ctx
@@ -86,7 +86,7 @@ func TestNewComponentTemplate(t *testing.T) {
 					return ctx
 				},
 			}).
-			Retriever(&retriever.CallbackHandler{
+			Retriever(&RetrieverCallbackHandler{
 				OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *retriever.CallbackInput) context.Context {
 					cnt++
 					return ctx
@@ -100,7 +100,7 @@ func TestNewComponentTemplate(t *testing.T) {
 					return ctx
 				},
 			}).
-			Tool(&tool.CallbackHandler{
+			Tool(&ToolCallbackHandler{
 				OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *tool.CallbackInput) context.Context {
 					cnt++
 					return ctx
@@ -118,32 +118,32 @@ func TestNewComponentTemplate(t *testing.T) {
 					return ctx
 				},
 			}).
-			Lambda(&DefaultCallbackHandler{
-				OnStart: func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
+			Lambda(callbacks.NewHandlerBuilder().
+				OnStartFn(func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 					cnt++
 					return ctx
-				},
-				OnStartWithStreamInput: func(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
+				}).
+				OnStartWithStreamInputFn(func(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
 					input.Close()
 					cnt++
 					return ctx
-				},
-				OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
+				}).
+				OnEndFn(func(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 					cnt++
 					return ctx
-				},
-				OnEndWithStreamOutput: func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
+				}).
+				OnEndWithStreamOutputFn(func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 					output.Close()
 					cnt++
 					return ctx
-				},
-				OnError: func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
+				}).
+				OnErrorFn(func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 					cnt++
 					return ctx
-				},
-			})
+				}).Build()).
+			Handler()
 
-		typs := []components.Component{
+		types := []components.Component{
 			components.ComponentOfPrompt,
 			components.ComponentOfLoaderSplitter,
 			components.ComponentOfChatModel,
@@ -155,7 +155,7 @@ func TestNewComponentTemplate(t *testing.T) {
 
 		handler := tpl.Handler()
 		ctx := context.Background()
-		for _, typ := range typs {
+		for _, typ := range types {
 			handler.OnStart(ctx, &callbacks.RunInfo{Component: typ}, nil)
 			handler.OnEnd(ctx, &callbacks.RunInfo{Component: typ}, nil)
 			handler.OnError(ctx, &callbacks.RunInfo{Component: typ}, fmt.Errorf("mock err"))
@@ -192,7 +192,7 @@ func TestNewComponentTemplate(t *testing.T) {
 		callbacks.OnStart(ctx, nil)
 		assert.Equal(t, 24, cnt)
 
-		tpl.Transformer(&document.TransformerCallbackHandler{
+		tpl.Transformer(&TransformerCallbackHandler{
 			OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *document.TransformerCallbackInput) context.Context {
 				cnt++
 				return ctx
@@ -205,7 +205,7 @@ func TestNewComponentTemplate(t *testing.T) {
 				cnt++
 				return ctx
 			},
-		}).Indexer(&indexer.CallbackHandler{
+		}).Indexer(&IndexerCallbackHandler{
 			OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *indexer.CallbackInput) context.Context {
 				cnt++
 				return ctx
@@ -218,7 +218,7 @@ func TestNewComponentTemplate(t *testing.T) {
 				cnt++
 				return ctx
 			},
-		}).Loader(&document.LoaderCallbackHandler{
+		}).Loader(&LoaderCallbackHandler{
 			OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *document.LoaderCallbackInput) context.Context {
 				cnt++
 				return ctx
@@ -246,90 +246,5 @@ func TestNewComponentTemplate(t *testing.T) {
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfLoader})
 		callbacks.OnEnd(ctx, nil)
 		assert.Equal(t, 27, cnt)
-	})
-
-	t.Run("test fallback", func(t *testing.T) {
-		cnt, cntf := 0, 0
-		tpl := NewHandlerHelper().
-			Retriever(&retriever.CallbackHandler{
-				OnStart: func(ctx context.Context, runInfo *callbacks.RunInfo, input *retriever.CallbackInput) context.Context {
-					cnt++
-					return ctx
-				},
-				OnEnd: func(ctx context.Context, runInfo *callbacks.RunInfo, output *retriever.CallbackOutput) context.Context {
-					cnt++
-					return ctx
-				},
-				OnError: func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
-					cnt++
-					return ctx
-				},
-			}).
-			Fallback(&DefaultCallbackHandler{
-				OnStart: func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
-					cntf++
-					return ctx
-				},
-				OnStartWithStreamInput: func(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
-					input.Close()
-					cntf++
-					return ctx
-				},
-				OnEnd: func(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
-					cntf++
-					return ctx
-				},
-				OnEndWithStreamOutput: func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
-					output.Close()
-					cntf++
-					return ctx
-				},
-				OnError: func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
-					cntf++
-					return ctx
-				},
-			})
-
-		handler := tpl.Handler()
-		ctx := context.Background()
-		handler.OnStart(ctx, &callbacks.RunInfo{
-			Component: compose.ComponentOfLambda,
-		}, nil)
-
-		handler.OnEnd(ctx, &callbacks.RunInfo{
-			Component: compose.ComponentOfLambda,
-		}, nil)
-
-		handler.OnError(ctx, &callbacks.RunInfo{
-			Component: compose.ComponentOfLambda,
-		}, fmt.Errorf("mock err"))
-
-		sir, siw := schema.Pipe[callbacks.CallbackInput](1)
-		siw.Close()
-		handler.OnStartWithStreamInput(ctx, &callbacks.RunInfo{
-			Component: compose.ComponentOfLambda,
-		}, sir)
-
-		sor, sow := schema.Pipe[callbacks.CallbackOutput](1)
-		sow.Close()
-		handler.OnEndWithStreamOutput(ctx, &callbacks.RunInfo{
-			Component: compose.ComponentOfLambda,
-		}, sor)
-
-		assert.Equal(t, 0, cnt)
-		assert.Equal(t, 5, cntf)
-
-		ctx = context.Background()
-		ctx = callbacks.InitCallbacks(ctx, &callbacks.RunInfo{Component: compose.ComponentOfGraph}, handler)
-		callbacks.OnStart(ctx, nil)
-		callbacks.OnEnd(ctx, nil)
-		callbacks.OnError(ctx, nil)
-		callbacks.OnStartWithStreamInput(ctx, &schema.StreamReader[callbacks.CallbackInput]{})
-		callbacks.OnEndWithStreamOutput(ctx, &schema.StreamReader[callbacks.CallbackOutput]{})
-		assert.Equal(t, 10, cntf)
-
-		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfRetriever})
-		callbacks.OnStart(ctx, nil)
-		assert.Equal(t, 1, cnt)
 	})
 }

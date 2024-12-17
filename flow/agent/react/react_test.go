@@ -34,6 +34,7 @@ import (
 	"github.com/cloudwego/eino/flow/agent"
 	mockModel "github.com/cloudwego/eino/internal/mock/components/model"
 	"github.com/cloudwego/eino/schema"
+	template "github.com/cloudwego/eino/utils/callbacks"
 )
 
 func TestReact(t *testing.T) {
@@ -602,4 +603,4 @@ func randStr() string {
 	return string(b)
 }
 
-var callbackForTest = BuildAgentCallback(&model.CallbackHandler{}, &tool.CallbackHandler{})
+var callbackForTest = BuildAgentCallback(&template.ModelCallbackHandler{}, &template.ToolCallbackHandler{})

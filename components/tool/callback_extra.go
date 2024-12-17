@@ -17,10 +17,7 @@
 package tool
 
 import (
-	"context"
-
 	"github.com/cloudwego/eino/callbacks"
-	"github.com/cloudwego/eino/schema"
 )
 
 // CallbackInput is the input for the tool callback.
@@ -60,29 +57,5 @@ func ConvCallbackOutput(src callbacks.CallbackOutput) *CallbackOutput {
 		return &CallbackOutput{Response: t}
 	default:
 		return nil
-	}
-}
-
-// CallbackHandler is the handler for the tool callback.
-type CallbackHandler struct {
-	OnStart               func(ctx context.Context, info *callbacks.RunInfo, input *CallbackInput) context.Context
-	OnEnd                 func(ctx context.Context, info *callbacks.RunInfo, input *CallbackOutput) context.Context
-	OnEndWithStreamOutput func(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[*CallbackOutput]) context.Context
-	OnError               func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context
-}
-
-// Needed checks if the callback handler is needed for the given timing.
-func (ch *CallbackHandler) Needed(ctx context.Context, runInfo *callbacks.RunInfo, timing callbacks.CallbackTiming) bool {
-	switch timing {
-	case callbacks.TimingOnStart:
-		return ch.OnStart != nil
-	case callbacks.TimingOnEnd:
-		return ch.OnEnd != nil
-	case callbacks.TimingOnEndWithStreamOutput:
-		return ch.OnEndWithStreamOutput != nil
-	case callbacks.TimingOnError:
-		return ch.OnError != nil
-	default:
-		return false
 	}
 }

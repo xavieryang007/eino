@@ -34,7 +34,7 @@ import (
 //	if err != nil {...}
 //	runnable.Invoke(ctx, params, compose.WithCallback(handler)) // => only implement functions which you want to override
 //
-// Deprecated: In most situations, it is preferred to use template.NewHandlerHelper. Otherwise, use NewHandlerBuilder().OnStartFn()...Build().
+// Deprecated: In most situations, it is preferred to use callbacks.NewHandlerHelper. Otherwise, use NewHandlerBuilder().OnStartFn()...Build().
 type HandlerBuilder struct {
 	OnStartFn                func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context
 	OnEndFn                  func(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context

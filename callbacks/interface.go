@@ -92,7 +92,7 @@ const (
 
 // TimingChecker checks if the handler is needed for the given callback aspect timing.
 // It's recommended for callback handlers to implement this interface, but not mandatory.
-// If a callback handler is created by using template.HandlerHelper or handlerBuilder, then this interface is automatically implemented.
+// If a callback handler is created by using callbacks.HandlerHelper or handlerBuilder, then this interface is automatically implemented.
 // Eino's callback mechanism will try to use this interface to determine whether any handlers are needed for the given timing.
 // Also, the callback handler that is not needed for that timing will be skipped.
 type TimingChecker interface {

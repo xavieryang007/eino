@@ -343,7 +343,8 @@ func (c *Chain[I, O]) AppendBranch(b *ChainBranch) *Chain[I, O] { // nolint: byt
 
 	for key := range b.key2BranchNode {
 		node := b.key2BranchNode[key]
-		nodeKey := fmt.Sprintf("%s[%s]_%s", pName, key, node.First.getNodeName())
+		nodeKey := fmt.Sprintf("%s[%s]_%s", pName, key, genNodeKeySuffix(node.First))
+
 		if err := c.gg.addNode(nodeKey, node.First, node.Second); err != nil {
 			c.reportError(fmt.Errorf("add branch node[%s] to chain failed: %w", nodeKey, err))
 			return c
@@ -471,7 +472,7 @@ func (c *Chain[I, O]) AppendParallel(p *Parallel) *Chain[I, O] {
 
 	for i := range p.nodes {
 		node := p.nodes[i]
-		nodeKey := fmt.Sprintf("%s[%d]_%s", pName, i, node.First.getNodeName())
+		nodeKey := fmt.Sprintf("%s[%d]_%s", pName, i, genNodeKeySuffix(node.First))
 		if err := c.gg.addNode(nodeKey, node.First, node.Second); err != nil {
 			c.reportError(fmt.Errorf("add parallel node[%s] to chain failed: %w", nodeKey, err))
 			return c
@@ -551,7 +552,7 @@ func (c *Chain[I, O]) addNode(node *graphNode, options *graphAddNodeOpts) {
 
 	nodeKey := options.nodeOptions.nodeKey
 	if nodeKey == "" {
-		nodeKey = c.nextNodeKey(node.getNodeName())
+		nodeKey = c.nextNodeKey(genNodeKeySuffix(node))
 	}
 
 	err := c.gg.addNode(nodeKey, node, options)
@@ -573,4 +574,11 @@ func (c *Chain[I, O]) addNode(node *graphNode, options *graphAddNodeOpts) {
 	}
 
 	c.preNodeKeys = []string{nodeKey}
+}
+
+func genNodeKeySuffix(node *graphNode) string {
+	if len(node.nodeInfo.name) == 0 {
+		return node.executorMeta.componentImplType + string(node.executorMeta.component)
+	}
+	return node.nodeInfo.name
 }

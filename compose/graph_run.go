@@ -510,19 +510,6 @@ func initNodeCallbacks(ctx context.Context, key string, info *nodeInfo, meta *ex
 
 	var cbs []callbacks.Handler
 	for i := range opts {
-		if len(opts[i].nodeHandler) != 0 {
-			if len(opts[i].keys) == 0 {
-				cbs = append(cbs, opts[i].nodeHandler...)
-			} else {
-				for _, k := range opts[i].keys {
-					if k == key {
-						cbs = append(cbs, opts[i].nodeHandler...)
-						break
-					}
-				}
-			}
-		}
-
 		if len(opts[i].handler) != 0 {
 			if len(opts[i].keys) == 0 {
 				cbs = append(cbs, opts[i].handler...)

@@ -142,8 +142,7 @@ func TestCallOption(t *testing.T) {
 		WithChatModelOption(
 			model.WithTopP(1.0),
 		),
-		WithGraphCallbacks(),
-		WithNodeCallbacks(callbacks.NewHandlerBuilder().
+		WithCallbacks(callbacks.NewHandlerBuilder().
 			OnStartFn(func(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 				startCnt++
 				return context.WithValue(ctx, sessionKey, "start")

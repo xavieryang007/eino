@@ -34,11 +34,9 @@ type Option struct {
 	options []any
 	handler []callbacks.Handler
 
-	nodeHandler []callbacks.Handler // deprecated
-	keys        []string
+	keys []string
 
-	graphHandler []callbacks.Handler // deprecated
-	maxRunSteps  int
+	maxRunSteps int
 }
 
 // DesignateNode set the key of the node which will be used to.
@@ -136,16 +134,12 @@ func WithCallbacks(cbs ...callbacks.Handler) Option {
 
 // Deprecated: use WithCallbacks and perform the type checking for component within it instead
 func WithNodeCallbacks(cbs ...callbacks.Handler) Option {
-	return Option{
-		nodeHandler: cbs,
-	}
+	return WithCallbacks(cbs...)
 }
 
 // Deprecated: use WithCallbacks and perform the type checking for component within it instead
 func WithGraphCallbacks(cbs ...callbacks.Handler) Option {
-	return Option{
-		graphHandler: cbs,
-	}
+	return WithCallbacks(cbs...)
 }
 
 // Deprecated: use WithRuntimeMaxSteps directly instead.

@@ -166,7 +166,7 @@ func TestGraphWithImplementableType(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, ErrExceedMaxSteps, err)
 
-	_, err = r.Invoke(ctx, "how are you", WithGraphRunOption(WithRuntimeMaxSteps(1)))
+	_, err = r.Invoke(ctx, "how are you", WithRuntimeMaxSteps(WithRuntimeMaxSteps(1)))
 	assert.Error(t, err)
 	assert.Equal(t, ErrExceedMaxSteps, err)
 
@@ -288,12 +288,12 @@ func TestNestedGraph(t *testing.T) {
 		}).Build()
 
 	// invoke
-	ri, err := r.Invoke(ctx, "london", WithNodeCallbacks(cb))
+	ri, err := r.Invoke(ctx, "london", WithCallbacks(cb))
 	assert.NoError(t, err)
 	t.Log(ri)
 
 	// stream
-	rs, err := r.Stream(ctx, "london", WithNodeCallbacks(cb))
+	rs, err := r.Stream(ctx, "london", WithCallbacks(cb))
 	assert.NoError(t, err)
 	for {
 		ri, err = rs.Recv()
@@ -310,7 +310,7 @@ func TestNestedGraph(t *testing.T) {
 	_ = sw.Send("london", nil)
 	sw.Close()
 
-	rc, err := r.Collect(ctx, sr, WithNodeCallbacks(cb))
+	rc, err := r.Collect(ctx, sr, WithCallbacks(cb))
 	assert.NoError(t, err)
 	t.Log(rc)
 
@@ -319,7 +319,7 @@ func TestNestedGraph(t *testing.T) {
 	_ = sw.Send("london", nil)
 	sw.Close()
 
-	rt, err := r.Transform(ctx, sr, WithNodeCallbacks(cb))
+	rt, err := r.Transform(ctx, sr, WithCallbacks(cb))
 	assert.NoError(t, err)
 	for {
 		ri, err = rt.Recv()

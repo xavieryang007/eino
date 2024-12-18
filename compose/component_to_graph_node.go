@@ -187,7 +187,5 @@ func toNode(nodeInfo *nodeInfo, executor *composableRunnable, graph AnyGraph, //
 		opts:     opts,
 	}
 
-	gn.nodeInfo.name = gn.getNodeName()
-
 	return gn
 }

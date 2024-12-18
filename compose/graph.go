@@ -852,7 +852,7 @@ func (g *graph) toGraphInfo(opt *graphCompileOptions, key2SubGraphs map[string]*
 				GraphAddNodeOpts: gNode.opts,
 				InputType:        gNode.cr.inputType,
 				OutputType:       gNode.cr.outputType,
-				Name:             gNode.getNodeName(),
+				Name:             gNode.nodeInfo.name,
 				InputKey:         gNode.cr.nodeInfo.inputKey,
 				OutputKey:        gNode.cr.nodeInfo.outputKey,
 			}
@@ -865,7 +865,7 @@ func (g *graph) toGraphInfo(opt *graphCompileOptions, key2SubGraphs map[string]*
 			GraphAddNodeOpts: gNode.opts,
 			InputType:        gNode.cr.inputType,
 			OutputType:       gNode.cr.outputType,
-			Name:             gNode.getNodeName(),
+			Name:             gNode.nodeInfo.name,
 			InputKey:         gNode.cr.nodeInfo.inputKey,
 			OutputKey:        gNode.cr.nodeInfo.outputKey,
 		}

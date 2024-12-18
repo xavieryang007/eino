@@ -215,10 +215,6 @@ func initGraphCallbacks(ctx context.Context, info *nodeInfo, meta *executorMeta,
 
 	var cbs []callbacks.Handler
 	for i := range opts {
-		if len(opts[i].graphHandler) != 0 {
-			cbs = append(cbs, opts[i].graphHandler...)
-		}
-
 		if len(opts[i].handler) != 0 && len(opts[i].keys) == 0 {
 			cbs = append(cbs, opts[i].handler...)
 		}

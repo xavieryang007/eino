@@ -1138,13 +1138,13 @@ func TestGraphCompileCallback(t *testing.T) {
 					Component:  ComponentOfPassthrough,
 					InputType:  reflect.TypeOf(""),
 					OutputType: reflect.TypeOf(""),
-					Name:       "PassthroughPassthrough",
+					Name:       "",
 				},
 				"pass2": {
 					Component:  ComponentOfPassthrough,
 					InputType:  reflect.TypeOf(""),
 					OutputType: reflect.TypeOf(""),
-					Name:       "PassthroughPassthrough",
+					Name:       "",
 				},
 				"sub_graph": {
 					Component:        ComponentOfGraph,
@@ -1152,7 +1152,7 @@ func TestGraphCompileCallback(t *testing.T) {
 					GraphAddNodeOpts: subGraphOpts,
 					InputType:        reflect.TypeOf(""),
 					OutputType:       reflect.TypeOf(""),
-					Name:             "Graph",
+					Name:             "",
 					GraphInfo: &GraphInfo{
 						CompileOptions: subGraphCompileOpts,
 						Nodes: map[string]GraphNodeInfo{
@@ -1162,7 +1162,7 @@ func TestGraphCompileCallback(t *testing.T) {
 								GraphAddNodeOpts: ssGraphOpts,
 								InputType:        reflect.TypeOf(""),
 								OutputType:       reflect.TypeOf(""),
-								Name:             "Graph",
+								Name:             "",
 								GraphInfo: &GraphInfo{
 									CompileOptions: ssGraphCompileOpts,
 									Nodes: map[string]GraphNodeInfo{

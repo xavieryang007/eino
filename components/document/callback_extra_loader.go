@@ -17,8 +17,6 @@
 package document
 
 import (
-	"context"
-
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/schema"
 )
@@ -69,26 +67,5 @@ func ConvLoaderCallbackOutput(src callbacks.CallbackOutput) *LoaderCallbackOutpu
 		}
 	default:
 		return nil
-	}
-}
-
-// LoaderCallbackHandler is the handler for the loader callback.
-type LoaderCallbackHandler struct {
-	OnStart func(ctx context.Context, runInfo *callbacks.RunInfo, input *LoaderCallbackInput) context.Context
-	OnEnd   func(ctx context.Context, runInfo *callbacks.RunInfo, output *LoaderCallbackOutput) context.Context
-	OnError func(ctx context.Context, runInfo *callbacks.RunInfo, err error) context.Context
-}
-
-// Needed checks if the callback handler is needed for the given timing.
-func (ch *LoaderCallbackHandler) Needed(ctx context.Context, runInfo *callbacks.RunInfo, timing callbacks.CallbackTiming) bool {
-	switch timing {
-	case callbacks.TimingOnStart:
-		return ch.OnStart != nil
-	case callbacks.TimingOnEnd:
-		return ch.OnEnd != nil
-	case callbacks.TimingOnError:
-		return ch.OnError != nil
-	default:
-		return false
 	}
 }

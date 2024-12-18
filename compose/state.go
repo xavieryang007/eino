@@ -26,31 +26,17 @@ import (
 )
 
 // NewStateGraph creates a new state graph. It requires a func of GenLocalState to generate the state.
-// eg.
 //
-//	type testState struct {
-//		UserInfo *UserInfo
-//		KVs map[string]any
-//	}
+// Deprecated: NewStateGraph is deprecated and will be removed in a future version.
+// Use NewGraph with WithGenLocalState option instead:
 //
-//	genStateFunc := func(ctx context.Context) *testState {
-//		return &testState{}
-//	}
+//	// Instead of:
+//	graph := NewStateGraph[Input, Output, State](genStateFunc)
 //
-//	graph := compose.NewStateGraph[string, string, testState](genStateFunc)
-//
-//	// you can use WithPreHandler and WithPostHandler to do something with state of this graph.
-//	graph.AddNode("node1", someNode, compose.WithPreHandler(func(ctx context.Context, in string, state *testState) (string, error) {
-//		// do something with state
-//		return in, nil
-//	}), compose.WithPostHandler(func(ctx context.Context, out string, state *testState) (string, error) {
-//		// do something with state
-//		return out, nil
-//	}))
+//	// Use:
+//	graph := NewGraph[Input, Output](WithGenLocalState(genStateFunc))
 func NewStateGraph[I, O, S any](gen GenLocalState[S]) *StateGraph[I, O, S] {
 	sg := &StateGraph[I, O, S]{NewGraph[I, O](WithGenLocalState(gen))}
-
-	sg.graph.runtimeGraphKey = defaultGraphKey()
 
 	sg.cmp = ComponentOfStateGraph
 
@@ -58,35 +44,31 @@ func NewStateGraph[I, O, S any](gen GenLocalState[S]) *StateGraph[I, O, S] {
 }
 
 // StateGraph is a graph that shares state between nodes. It's useful when you want to share some data across nodes.
+//
+// Deprecated: StateGraph is deprecated and will be removed in a future version.
+// Use Graph with WithGenLocalState option instead:
+//
+//	// Instead of:
+//	graph := NewStateGraph[Input, Output, State](genStateFunc)
+//
+//	// Use:
+//	graph := NewGraph[Input, Output](WithGenLocalState(genStateFunc))
 type StateGraph[I, O, S any] struct {
 	*Graph[I, O]
 }
 
 // NewStateChain creates a new state chain. It requires a func of GenLocalState to generate the state.
-// eg.
 //
-//	genStateFunc := func(ctx context.Context) *testState {
-//		// or may be you can create the state by params in ctx.
-//		return &testState{}
-//	}
+// Deprecated: NewStateChain is deprecated and will be removed in a future version.
+// Use NewChain with WithGenLocalState option instead:
 //
-//	chain := compose.NewStateChain[string, string, testState](genStateFunc)
+//	// Instead of:
+//	chain := NewStateChain[Input, Output, State](genStateFunc)
 //
-//	chain.AppendXXX(someNode, compose.WithPreHandler(func(ctx context.Context, in string, state *testState) (string, error) {
-//		// do something with state
-//		return in, nil
-//	}), compose.WithPostHandler(func(ctx context.Context, out string, state *testState) (string, error) {
-//		// do something with state
-//		return out, nil
-//	}))
+//	// Use:
+//	chain := NewChain[Input, Output](WithGenLocalState(genStateFunc))
 func NewStateChain[I, O, S any](gen GenLocalState[S]) *StateChain[I, O, S] {
 	sc := &StateChain[I, O, S]{NewChain[I, O](WithGenLocalState(gen))}
-
-	sc.gg.addNodeChecker = baseNodeChecker
-
-	sc.gg.compileChecker = func(options *graphCompileOptions) error {
-		return nil
-	}
 
 	sc.gg.cmp = ComponentOfStateChain
 
@@ -96,6 +78,15 @@ func NewStateChain[I, O, S any](gen GenLocalState[S]) *StateChain[I, O, S] {
 // StateChain is a chain that shares state between nodes. State is shared between nodes in the chain.
 // It's useful when you want to share some data across nodes in a chain.
 // you can use WithPreHandler and WithPostHandler to do something with state of this chain.
+//
+// Deprecated: StateChain is deprecated and will be removed in a future version.
+// Use Chain with WithGenLocalState option instead:
+//
+//	// Instead of:
+//	chain := NewStateChain[Input, Output, State](genStateFunc)
+//
+//	// Use:
+//	chain := NewChain[Input, Output](WithGenLocalState(genStateFunc))
 type StateChain[I, O, S any] struct {
 	*Chain[I, O]
 }

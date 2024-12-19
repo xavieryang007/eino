@@ -11,6 +11,5 @@ Opion = "Opion"
 TOpion = "TOpion"
 renderring = "renderring"
 
-
 [files]
 extend-exclude = ["go.mod", "go.sum", "check_branch_name.sh"]

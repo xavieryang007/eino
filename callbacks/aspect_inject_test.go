@@ -126,10 +126,8 @@ func TestAspectInject(t *testing.T) {
 				return ctx
 			}).Build()
 
-		manager, ok := newManager(nil, hb)
-		assert.True(t, ok)
+		ctx = InitCallbacks(ctx, nil, hb)
 
-		ctx = ctxWithManager(ctx, manager)
 		ctx = OnStart(ctx, 1)
 		ctx = OnEnd(ctx, 2)
 		ctx = OnError(ctx, fmt.Errorf("3"))

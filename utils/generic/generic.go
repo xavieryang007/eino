@@ -69,3 +69,10 @@ type Pair[F, S any] struct {
 	First  F
 	Second S
 }
+
+// Reverse reverses the elements of the slice in place.
+func Reverse[S ~[]E, E any](s S) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}

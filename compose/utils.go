@@ -22,7 +22,9 @@ import (
 	"reflect"
 
 	"github.com/cloudwego/eino/callbacks"
+	icb "github.com/cloudwego/eino/internal/callbacks"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/utils/generic"
 )
 
 func mergeMap(vs []any) (any, error) {
@@ -87,119 +89,116 @@ func mergeValues(vs []any) (any, error) {
 	return nil, fmt.Errorf("(mergeValues) unsupported type: %v", t0)
 }
 
-func invokeWithCallbacks[I, O, TOption any](i Invoke[I, O, TOption]) Invoke[I, O, TOption] {
+type on[T any] func(context.Context, T) (context.Context, T)
+
+func onStart[T any](ctx context.Context, input T) (context.Context, T) {
+	return icb.On(ctx, input, icb.OnStartHandle[T], callbacks.TimingOnStart)
+}
+
+func onEnd[T any](ctx context.Context, output T) (context.Context, T) {
+	return icb.On(ctx, output, icb.OnEndHandle[T], callbacks.TimingOnEnd)
+}
+
+func onStartWithStreamInput[T any](ctx context.Context, input *schema.StreamReader[T]) (
+	context.Context, *schema.StreamReader[T]) {
+
+	return icb.On(ctx, input, icb.OnStartWithStreamInputHandle[T], callbacks.TimingOnStartWithStreamInput)
+}
+
+func genericOnStartWithStreamInputHandle(ctx context.Context, input streamReader,
+	runInfo *icb.RunInfo, handlers []icb.Handler) (context.Context, streamReader) {
+
+	generic.Reverse(handlers)
+
+	cpy := input.copy
+
+	handle := func(handler icb.Handler, in streamReader) context.Context {
+		in_, ok := unpackStreamReader[icb.CallbackInput](in)
+		if !ok {
+			panic("impossible")
+		}
+
+		return handler.OnStartWithStreamInput(ctx, runInfo, in_)
+	}
+
+	return icb.OnWithStream(ctx, input, handlers, cpy, handle)
+}
+
+func genericOnStartWithStreamInput(ctx context.Context, input streamReader) (context.Context, streamReader) {
+	return icb.On(ctx, input, genericOnStartWithStreamInputHandle, callbacks.TimingOnStartWithStreamInput)
+}
+
+func onEndWithStreamOutput[T any](ctx context.Context, output *schema.StreamReader[T]) (
+	context.Context, *schema.StreamReader[T]) {
+
+	return icb.On(ctx, output, icb.OnEndWithStreamOutputHandle[T], callbacks.TimingOnEndWithStreamOutput)
+}
+
+func genericOnEndWithStreamOutputHandle(ctx context.Context, output streamReader,
+	runInfo *icb.RunInfo, handlers []icb.Handler) (context.Context, streamReader) {
+
+	cpy := output.copy
+
+	handle := func(handler icb.Handler, out streamReader) context.Context {
+		out_, ok := unpackStreamReader[icb.CallbackOutput](out)
+		if !ok {
+			panic("impossible")
+		}
+
+		return handler.OnEndWithStreamOutput(ctx, runInfo, out_)
+	}
+
+	return icb.OnWithStream(ctx, output, handlers, cpy, handle)
+}
+
+func genericOnEndWithStreamOutput(ctx context.Context, output streamReader) (context.Context, streamReader) {
+	return icb.On(ctx, output, genericOnEndWithStreamOutputHandle, callbacks.TimingOnEndWithStreamOutput)
+}
+
+func onError(ctx context.Context, err error) (context.Context, error) {
+	return icb.On(ctx, err, icb.OnErrorHandle, callbacks.TimingOnError)
+}
+
+func runWithCallbacks[I, O, TOption any](r func(context.Context, I, ...TOption) (O, error),
+	onStart on[I], onEnd on[O], onError on[error]) func(context.Context, I, ...TOption) (O, error) {
+
 	return func(ctx context.Context, input I, opts ...TOption) (output O, err error) {
-		defer func() {
-			if err != nil {
-				_ = callbacks.OnError(ctx, err)
-				return
-			}
+		ctx, input = onStart(ctx, input)
 
-			_ = callbacks.OnEnd(ctx, output)
-
-		}()
-
-		ctx = callbacks.OnStart(ctx, input)
-
-		return i(ctx, input, opts...)
-	}
-}
-
-func genericInvokeWithCallbacks(i invoke) invoke {
-	return func(ctx context.Context, input any, opts ...any) (output any, err error) {
-		defer func() {
-			if err != nil {
-				_ = callbacks.OnError(ctx, err)
-				return
-			}
-
-			_ = callbacks.OnEnd(ctx, output)
-
-		}()
-
-		ctx = callbacks.OnStart(ctx, input)
-
-		return i(ctx, input, opts...)
-	}
-}
-
-func streamWithCallbacks[I, O, TOption any](s Stream[I, O, TOption]) Stream[I, O, TOption] {
-	return func(ctx context.Context, input I, opts ...TOption) (output *schema.StreamReader[O], err error) {
-		ctx = callbacks.OnStart(ctx, input)
-
-		output, err = s(ctx, input, opts...)
+		output, err = r(ctx, input, opts...)
 		if err != nil {
-			_ = callbacks.OnError(ctx, err)
+			ctx, err = onError(ctx, err)
 			return output, err
 		}
 
-		_, newS := callbacks.OnEndWithStreamOutput(ctx, output)
-
-		return newS, nil
-	}
-}
-
-func collectWithCallbacks[I, O, TOption any](c Collect[I, O, TOption]) Collect[I, O, TOption] {
-	return func(ctx context.Context, input *schema.StreamReader[I], opts ...TOption) (output O, err error) {
-		defer func() {
-			if err != nil {
-				_ = callbacks.OnError(ctx, err)
-				return
-			}
-			_ = callbacks.OnEnd(ctx, output)
-		}()
-
-		ctx, newS := callbacks.OnStartWithStreamInput(ctx, input)
-
-		return c(ctx, newS, opts...)
-	}
-}
-
-func transformWithCallbacks[I, O, TOption any](t Transform[I, O, TOption]) Transform[I, O, TOption] {
-	return func(ctx context.Context, input *schema.StreamReader[I],
-		opts ...TOption) (output *schema.StreamReader[O], err error) {
-		ctx, input = callbacks.OnStartWithStreamInput(ctx, input)
-
-		output, err = t(ctx, input, opts...)
-		if err != nil {
-			_ = callbacks.OnError(ctx, err)
-			return output, err
-		}
-
-		_, output = callbacks.OnEndWithStreamOutput(ctx, output)
+		ctx, output = onEnd(ctx, output)
 
 		return output, nil
 	}
 }
 
+func invokeWithCallbacks[I, O, TOption any](i Invoke[I, O, TOption]) Invoke[I, O, TOption] {
+	return runWithCallbacks(i, onStart[I], onEnd[O], onError)
+}
+
+func genericInvokeWithCallbacks(i invoke) invoke {
+	return runWithCallbacks(i, onStart[any], onEnd[any], onError)
+}
+
+func streamWithCallbacks[I, O, TOption any](s Stream[I, O, TOption]) Stream[I, O, TOption] {
+	return runWithCallbacks(s, onStart[I], onEndWithStreamOutput[O], onError)
+}
+
+func collectWithCallbacks[I, O, TOption any](c Collect[I, O, TOption]) Collect[I, O, TOption] {
+	return runWithCallbacks(c, onStartWithStreamInput[I], onEnd[O], onError)
+}
+
+func transformWithCallbacks[I, O, TOption any](t Transform[I, O, TOption]) Transform[I, O, TOption] {
+	return runWithCallbacks(t, onStartWithStreamInput[I], onEndWithStreamOutput[O], onError)
+}
+
 func genericTransformWithCallbacks(t transform) transform {
-	return func(ctx context.Context, input streamReader, opts ...any) (output streamReader, err error) {
-		inArr := input.copy(2)
-		is, ok := unpackStreamReader[callbacks.CallbackInput](inArr[1])
-		if !ok { // unexpected
-			return t(ctx, inArr[0], opts...)
-		}
-
-		ctx, is = callbacks.OnStartWithStreamInput(ctx, is)
-		is.Close() // goroutine free copy buffer release
-
-		output, err = t(ctx, inArr[0], opts...)
-		if err != nil {
-			_ = callbacks.OnError(ctx, err)
-			return output, err
-		}
-
-		outArr := output.copy(2)
-		os, ok := unpackStreamReader[callbacks.CallbackOutput](outArr[1])
-		if !ok { // unexpected
-			return outArr[0], nil
-		}
-
-		_, os = callbacks.OnEndWithStreamOutput(ctx, os)
-		os.Close()
-
-		return outArr[0], nil
-	}
+	return runWithCallbacks(t, genericOnStartWithStreamInput, genericOnEndWithStreamOutput, onError)
 }
 
 func initGraphCallbacks(ctx context.Context, info *nodeInfo, meta *executorMeta, opts ...Option) context.Context {

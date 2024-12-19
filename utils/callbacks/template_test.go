@@ -173,15 +173,15 @@ func TestNewComponentTemplate(t *testing.T) {
 
 		ctx = context.Background()
 		ctx = callbacks.InitCallbacks(ctx, &callbacks.RunInfo{Component: components.ComponentOfTransformer}, handler)
-		callbacks.OnStart(ctx, nil)
+		callbacks.OnStart[any](ctx, nil)
 		assert.Equal(t, 22, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfPrompt})
-		callbacks.OnStart(ctx, nil)
+		callbacks.OnStart[any](ctx, nil)
 		assert.Equal(t, 23, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfIndexer})
-		callbacks.OnEnd(ctx, nil)
+		callbacks.OnEnd[any](ctx, nil)
 		assert.Equal(t, 23, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfEmbedding})
@@ -189,7 +189,7 @@ func TestNewComponentTemplate(t *testing.T) {
 		assert.Equal(t, 24, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfLoader})
-		callbacks.OnStart(ctx, nil)
+		callbacks.OnStart[any](ctx, nil)
 		assert.Equal(t, 24, cnt)
 
 		tpl.Transformer(&TransformerCallbackHandler{
@@ -236,15 +236,15 @@ func TestNewComponentTemplate(t *testing.T) {
 		handler = tpl.Handler()
 		ctx = context.Background()
 		ctx = callbacks.InitCallbacks(ctx, &callbacks.RunInfo{Component: components.ComponentOfTransformer}, handler)
-		callbacks.OnEnd(ctx, nil)
+		callbacks.OnEnd[any](ctx, nil)
 		assert.Equal(t, 25, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfIndexer})
-		callbacks.OnStart(ctx, nil)
+		callbacks.OnStart[any](ctx, nil)
 		assert.Equal(t, 26, cnt)
 
 		ctx = callbacks.SetRunInfo(ctx, &callbacks.RunInfo{Component: components.ComponentOfLoader})
-		callbacks.OnEnd(ctx, nil)
+		callbacks.OnEnd[any](ctx, nil)
 		assert.Equal(t, 27, cnt)
 	})
 }

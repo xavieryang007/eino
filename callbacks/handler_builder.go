@@ -22,72 +22,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// HandlerBuilder can be used to build a Handler with callback functions.
-// e.g.
-//
-//	handler := &HandlerBuilder{
-//		OnStartFn: func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context {} // self defined start callback function
-//	}
-//
-//	graph := compose.NewGraph[inputType, outputType]()
-//	runnable, err := graph.Compile()
-//	if err != nil {...}
-//	runnable.Invoke(ctx, params, compose.WithCallback(handler)) // => only implement functions which you want to override
-//
-// Deprecated: In most situations, it is preferred to use callbacks.NewHandlerHelper. Otherwise, use NewHandlerBuilder().OnStartFn()...Build().
 type HandlerBuilder struct {
-	OnStartFn                func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context
-	OnEndFn                  func(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context
-	OnErrorFn                func(ctx context.Context, info *RunInfo, err error) context.Context
-	OnStartWithStreamInputFn func(ctx context.Context, info *RunInfo, input *schema.StreamReader[CallbackInput]) context.Context
-	OnEndWithStreamOutputFn  func(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context
-}
-
-func (h *HandlerBuilder) OnStart(ctx context.Context, info *RunInfo, input CallbackInput) context.Context {
-	if h.OnStartFn != nil {
-		return h.OnStartFn(ctx, info, input)
-	}
-
-	return ctx
-}
-
-func (h *HandlerBuilder) OnEnd(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context {
-	if h.OnEndFn != nil {
-		return h.OnEndFn(ctx, info, output)
-	}
-
-	return ctx
-}
-
-func (h *HandlerBuilder) OnError(ctx context.Context, info *RunInfo, err error) context.Context {
-	if h.OnErrorFn != nil {
-		return h.OnErrorFn(ctx, info, err)
-	}
-
-	return ctx
-}
-
-func (h *HandlerBuilder) OnStartWithStreamInput(ctx context.Context, info *RunInfo, input *schema.StreamReader[CallbackInput]) context.Context {
-	if h.OnStartWithStreamInputFn != nil {
-		return h.OnStartWithStreamInputFn(ctx, info, input)
-	}
-
-	input.Close()
-
-	return ctx
-}
-
-func (h *HandlerBuilder) OnEndWithStreamOutput(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context {
-	if h.OnEndWithStreamOutputFn != nil {
-		return h.OnEndWithStreamOutputFn(ctx, info, output)
-	}
-
-	output.Close()
-
-	return ctx
-}
-
-type handlerBuilder struct {
 	onStartFn                func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context
 	onEndFn                  func(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context
 	onErrorFn                func(ctx context.Context, info *RunInfo, err error) context.Context
@@ -95,51 +30,35 @@ type handlerBuilder struct {
 	onEndWithStreamOutputFn  func(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context
 }
 
-func (hb *handlerBuilder) OnStart(ctx context.Context, info *RunInfo, input CallbackInput) context.Context {
-	if hb.onStartFn != nil {
-		return hb.onStartFn(ctx, info, input)
-	}
-
-	return ctx
+type handlerImpl struct {
+	HandlerBuilder
 }
 
-func (hb *handlerBuilder) OnEnd(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context {
-	if hb.onEndFn != nil {
-		return hb.onEndFn(ctx, info, output)
-	}
-
-	return ctx
+func (hb *handlerImpl) OnStart(ctx context.Context, info *RunInfo, input CallbackInput) context.Context {
+	return hb.onStartFn(ctx, info, input)
 }
 
-func (hb *handlerBuilder) OnError(ctx context.Context, info *RunInfo, err error) context.Context {
-	if hb.onErrorFn != nil {
-		return hb.onErrorFn(ctx, info, err)
-	}
-
-	return ctx
+func (hb *handlerImpl) OnEnd(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context {
+	return hb.onEndFn(ctx, info, output)
 }
 
-func (hb *handlerBuilder) OnStartWithStreamInput(ctx context.Context, info *RunInfo, input *schema.StreamReader[CallbackInput]) context.Context {
-	if hb.onStartWithStreamInputFn != nil {
-		return hb.onStartWithStreamInputFn(ctx, info, input)
-	}
-
-	input.Close()
-
-	return ctx
+func (hb *handlerImpl) OnError(ctx context.Context, info *RunInfo, err error) context.Context {
+	return hb.onErrorFn(ctx, info, err)
 }
 
-func (hb *handlerBuilder) OnEndWithStreamOutput(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context {
-	if hb.onEndWithStreamOutputFn != nil {
-		return hb.onEndWithStreamOutputFn(ctx, info, output)
-	}
+func (hb *handlerImpl) OnStartWithStreamInput(ctx context.Context, info *RunInfo,
+	input *schema.StreamReader[CallbackInput]) context.Context {
 
-	output.Close()
-
-	return ctx
+	return hb.onStartWithStreamInputFn(ctx, info, input)
 }
 
-func (hb *handlerBuilder) Needed(_ context.Context, _ *RunInfo, timing CallbackTiming) bool {
+func (hb *handlerImpl) OnEndWithStreamOutput(ctx context.Context, info *RunInfo,
+	output *schema.StreamReader[CallbackOutput]) context.Context {
+
+	return hb.onEndWithStreamOutputFn(ctx, info, output)
+}
+
+func (hb *handlerImpl) Needed(_ context.Context, _ *RunInfo, timing CallbackTiming) bool {
 	switch timing {
 	case TimingOnStart:
 		return hb.onStartFn != nil
@@ -156,36 +75,50 @@ func (hb *handlerBuilder) Needed(_ context.Context, _ *RunInfo, timing CallbackT
 	}
 }
 
-func NewHandlerBuilder() *handlerBuilder {
-	return &handlerBuilder{}
+// NewHandlerBuilder creates and returns a new HandlerBuilder instance.
+// HandlerBuilder is used to construct a Handler with custom callback functions
+func NewHandlerBuilder() *HandlerBuilder {
+	return &HandlerBuilder{}
 }
 
-func (hb *handlerBuilder) OnStartFn(fn func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context) *handlerBuilder {
+func (hb *HandlerBuilder) OnStartFn(
+	fn func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context) *HandlerBuilder {
+
 	hb.onStartFn = fn
 	return hb
 }
 
-func (hb *handlerBuilder) OnEndFn(fn func(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context) *handlerBuilder {
+func (hb *HandlerBuilder) OnEndFn(
+	fn func(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context) *HandlerBuilder {
+
 	hb.onEndFn = fn
 	return hb
 }
 
-func (hb *handlerBuilder) OnErrorFn(fn func(ctx context.Context, info *RunInfo, err error) context.Context) *handlerBuilder {
+func (hb *HandlerBuilder) OnErrorFn(
+	fn func(ctx context.Context, info *RunInfo, err error) context.Context) *HandlerBuilder {
+
 	hb.onErrorFn = fn
 	return hb
 }
 
-func (hb *handlerBuilder) OnStartWithStreamInputFn(fn func(ctx context.Context, info *RunInfo, input *schema.StreamReader[CallbackInput]) context.Context) *handlerBuilder {
+// OnStartWithStreamInputFn sets the callback function to be called.
+func (hb *HandlerBuilder) OnStartWithStreamInputFn(
+	fn func(ctx context.Context, info *RunInfo, input *schema.StreamReader[CallbackInput]) context.Context) *HandlerBuilder {
+
 	hb.onStartWithStreamInputFn = fn
 	return hb
 }
 
-func (hb *handlerBuilder) OnEndWithStreamOutputFn(fn func(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context) *handlerBuilder {
+// OnEndWithStreamOutputFn sets the callback function to be called.
+func (hb *HandlerBuilder) OnEndWithStreamOutputFn(
+	fn func(ctx context.Context, info *RunInfo, output *schema.StreamReader[CallbackOutput]) context.Context) *HandlerBuilder {
+
 	hb.onEndWithStreamOutputFn = fn
 	return hb
 }
 
 // Build returns a Handler with the functions set in the builder.
-func (hb *handlerBuilder) Build() Handler {
-	return hb
+func (hb *HandlerBuilder) Build() Handler {
+	return &handlerImpl{*hb}
 }

@@ -17,18 +17,11 @@
 package callbacks
 
 import (
-	"context"
-
-	"github.com/cloudwego/eino/components"
-	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/internal/callbacks"
 )
 
-// RunInfo is the info of run node.
-type RunInfo struct {
-	Name      string
-	Type      string
-	Component components.Component
-}
+// RunInfo contains information about the running component.
+type RunInfo = callbacks.RunInfo
 
 // CallbackInput is the input of the callback.
 // the type of input is defined by the component.
@@ -50,37 +43,21 @@ type RunInfo struct {
 //			// is not a model callback input, just ignore it
 //			return
 //		}
-type CallbackInput any
+type CallbackInput = callbacks.CallbackInput
 
-type CallbackOutput any
+type CallbackOutput = callbacks.CallbackOutput
 
-type Handler interface {
-	OnStart(ctx context.Context, info *RunInfo, input CallbackInput) context.Context
-	OnEnd(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context
-
-	OnError(ctx context.Context, info *RunInfo, err error) context.Context
-
-	OnStartWithStreamInput(ctx context.Context, info *RunInfo,
-		input *schema.StreamReader[CallbackInput]) context.Context
-	OnEndWithStreamOutput(ctx context.Context, info *RunInfo,
-		output *schema.StreamReader[CallbackOutput]) context.Context
-}
-
-var globalHandlers []Handler
+type Handler = callbacks.Handler
 
 // InitCallbackHandlers sets the global callback handlers.
 // It should be called BEFORE any callback handler by user.
 // It's useful when you want to inject some basic callbacks to all nodes.
 func InitCallbackHandlers(handlers []Handler) {
-	globalHandlers = handlers
-}
-
-func GetGlobalHandlers() []Handler {
-	return globalHandlers
+	callbacks.GlobalHandlers = handlers
 }
 
 // CallbackTiming enumerates all the timing of callback aspects.
-type CallbackTiming uint8
+type CallbackTiming = callbacks.CallbackTiming
 
 const (
 	TimingOnStart CallbackTiming = iota
@@ -95,6 +72,4 @@ const (
 // If a callback handler is created by using callbacks.HandlerHelper or handlerBuilder, then this interface is automatically implemented.
 // Eino's callback mechanism will try to use this interface to determine whether any handlers are needed for the given timing.
 // Also, the callback handler that is not needed for that timing will be skipped.
-type TimingChecker interface {
-	Needed(ctx context.Context, info *RunInfo, timing CallbackTiming) bool
-}
+type TimingChecker = callbacks.TimingChecker

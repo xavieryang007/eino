@@ -82,7 +82,7 @@ func OnEndHandle[T any](ctx context.Context, output T,
 	return ctx, output
 }
 
-func OnWithStream[S any](
+func OnWithStreamHandle[S any](
 	ctx context.Context,
 	inOut S,
 	handlers []Handler,
@@ -105,7 +105,7 @@ func OnWithStream[S any](
 func OnStartWithStreamInputHandle[T any](ctx context.Context, input *schema.StreamReader[T],
 	runInfo *RunInfo, handlers []Handler) (context.Context, *schema.StreamReader[T]) {
 
-	generic.Reverse(handlers)
+	handlers = generic.Reverse(handlers)
 
 	cpy := input.Copy
 
@@ -116,7 +116,7 @@ func OnStartWithStreamInputHandle[T any](ctx context.Context, input *schema.Stre
 		return handler.OnStartWithStreamInput(ctx, runInfo, in_)
 	}
 
-	return OnWithStream(ctx, input, handlers, cpy, handle)
+	return OnWithStreamHandle(ctx, input, handlers, cpy, handle)
 }
 
 func OnEndWithStreamOutputHandle[T any](ctx context.Context, output *schema.StreamReader[T],
@@ -131,7 +131,7 @@ func OnEndWithStreamOutputHandle[T any](ctx context.Context, output *schema.Stre
 		return handler.OnEndWithStreamOutput(ctx, runInfo, out_)
 	}
 
-	return OnWithStream(ctx, output, handlers, cpy, handle)
+	return OnWithStreamHandle(ctx, output, handlers, cpy, handle)
 }
 
 func OnErrorHandle(ctx context.Context, err error,

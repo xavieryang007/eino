@@ -34,7 +34,7 @@ func InitCallbacks(ctx context.Context, info *RunInfo, handlers ...Handler) cont
 	return ctxWithManager(ctx, nil)
 }
 
-func SetRunInfo(ctx context.Context, info *RunInfo) context.Context {
+func InitCallbacksWithExistingHandlers(ctx context.Context, info *RunInfo) context.Context {
 	cbm, ok := managerFromCtx(ctx)
 	if !ok {
 		return ctx

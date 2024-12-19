@@ -26,7 +26,7 @@ import (
 // OnStart Fast inject callback input / output aspect for component developer
 // e.g.
 //
-//	func (t *testchatmodel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (resp *schema.Message, err error) {
+//	func (t *testChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (resp *schema.Message, err error) {
 //		defer func() {
 //			if err != nil {
 //				callbacks.OnEnd(ctx, err)
@@ -93,9 +93,9 @@ func OnError(ctx context.Context, err error) context.Context {
 	return ctx
 }
 
-// SetRunInfo sets the RunInfo to be passed to Handler.
-func SetRunInfo(ctx context.Context, info *RunInfo) context.Context {
-	return callbacks.SetRunInfo(ctx, info)
+// InitCallbacksWithExistingHandlers initializes a new context with the provided RunInfo, while using the same handlers already exist.
+func InitCallbacksWithExistingHandlers(ctx context.Context, info *RunInfo) context.Context {
+	return callbacks.InitCallbacksWithExistingHandlers(ctx, info)
 }
 
 // InitCallbacks initializes a new context with the provided RunInfo and handlers.

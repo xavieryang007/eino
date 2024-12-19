@@ -50,11 +50,10 @@
 //
 // 2. Use [template.HandlerHelper] to create a handler:
 //
-// Package template provides [template.HandlerHelper] as a convenient way to build callback handlers
+// Package utils/callbacks provides [HandlerHelper] as a convenient way to build callback handlers
 // for different component types. It allows you to set specific handlers for each component type,
-// and a fallback handler for unmatched components.
 //
-// eg.
+// e.g.
 //
 //	// Create handlers for specific components
 //	modelHandler := &model.CallbackHandler{
@@ -67,14 +66,6 @@
 //	promptHandler := &prompt.CallbackHandler{
 //		OnEnd: func(ctx context.Context, info *RunInfo, output *prompt.CallbackOutput) context.Context {
 //			log.Printf("Prompt execution completed: %s", output.Result)
-//			return ctx
-//		},
-//	}
-//
-//	// Create a fallback handler for unmatched components
-//	fallbackHandler := &DefaultCallbackHandler{
-//		OnStart: func(ctx context.Context, info *RunInfo, input CallbackInput) context.Context {
-//			log.Printf("Generic component started: %s", info.ComponentName)
 //			return ctx
 //		},
 //	}
@@ -95,12 +86,10 @@
 //   - Document loader components (via loader.CallbackHandler)
 //   - Document transformer components (via transformer.CallbackHandler)
 //   - Tool components (via tool.CallbackHandler)
-//   - Graph (via template.DefaultCallbackHandler)
-//   - State graph (via template.DefaultCallbackHandler)
-//   - Chain (via template.DefaultCallbackHandler)
-//   - Passthrough (via template.DefaultCallbackHandler)
-//   - Tools node (via template.DefaultCallbackHandler)
-//   - Lambda (via template.DefaultCallbackHandler)
+//   - Graph (via Handler)
+//   - Chain (via Handler)
+//   - Tools node (via Handler)
+//   - Lambda (via Handler)
 //
 // Use the handler with a component:
 //

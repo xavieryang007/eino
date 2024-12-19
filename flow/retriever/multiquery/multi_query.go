@@ -207,5 +207,5 @@ func ctxWithFusionRunInfo(ctx context.Context) context.Context {
 
 	runInfo.Name = runInfo.Type + string(runInfo.Component)
 
-	return callbacks.SetRunInfo(ctx, runInfo)
+	return callbacks.InitCallbacksWithExistingHandlers(ctx, runInfo)
 }

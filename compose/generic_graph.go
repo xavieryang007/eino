@@ -124,7 +124,7 @@ func (g *Graph[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 	}
 
 	cr.nodeInfo = &nodeInfo{
-		name: generateName(option.graphName, cr.meta),
+		name: option.graphName,
 	}
 
 	ctxWrapper := func(ctx context.Context, opts ...Option) context.Context {

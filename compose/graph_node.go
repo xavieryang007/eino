@@ -128,23 +128,6 @@ func (gn *graphNode) compileIfNeeded(ctx context.Context) (*composableRunnable, 
 	return r, nil
 }
 
-func (gn *graphNode) getNodeName() string {
-	return generateName(gn.nodeInfo.name, gn.executorMeta)
-}
-
-func generateName(name string, meta *executorMeta) string {
-	if name != "" {
-		return name
-	}
-
-	if meta.componentImplType != "" {
-		return meta.componentImplType + string(meta.component)
-	}
-
-	return string(meta.component)
-
-}
-
 func parseExecutorInfoFromComponent(c component, executor any) *executorMeta {
 
 	componentImplType, ok := components.GetType(executor)

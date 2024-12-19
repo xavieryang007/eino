@@ -108,7 +108,7 @@ func onStartWithStreamInput[T any](ctx context.Context, input *schema.StreamRead
 func genericOnStartWithStreamInputHandle(ctx context.Context, input streamReader,
 	runInfo *icb.RunInfo, handlers []icb.Handler) (context.Context, streamReader) {
 
-	generic.Reverse(handlers)
+	handlers = generic.Reverse(handlers)
 
 	cpy := input.copy
 
@@ -121,7 +121,7 @@ func genericOnStartWithStreamInputHandle(ctx context.Context, input streamReader
 		return handler.OnStartWithStreamInput(ctx, runInfo, in_)
 	}
 
-	return icb.OnWithStream(ctx, input, handlers, cpy, handle)
+	return icb.OnWithStreamHandle(ctx, input, handlers, cpy, handle)
 }
 
 func genericOnStartWithStreamInput(ctx context.Context, input streamReader) (context.Context, streamReader) {
@@ -148,7 +148,7 @@ func genericOnEndWithStreamOutputHandle(ctx context.Context, output streamReader
 		return handler.OnEndWithStreamOutput(ctx, runInfo, out_)
 	}
 
-	return icb.OnWithStream(ctx, output, handlers, cpy, handle)
+	return icb.OnWithStreamHandle(ctx, output, handlers, cpy, handle)
 }
 
 func genericOnEndWithStreamOutput(ctx context.Context, output streamReader) (context.Context, streamReader) {

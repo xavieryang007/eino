@@ -17,11 +17,12 @@
 package schema
 
 const (
-	metaDataKeySubIndexes      = "_sub_indexes"
-	metaDataKeyScore           = "_score"
-	metaDataKeyVikingExtraInfo = "_viking_extra_info"
-	metaDataKeyVikingDSL       = "_viking_dsl"
-	metaDataKeyVector          = "_vector"
+	docMetaDataKeySubIndexes   = "_sub_indexes"
+	docMetaDataKeyScore        = "_score"
+	docMetaDataKeyExtraInfo    = "_extra_info"
+	docMetaDataKeyDSL          = "_dsl"
+	docMetaDataKeyDenseVector  = "_dense_vector"
+	docMetaDataKeySparseVector = "_sparse_vector"
 )
 
 // Document is a piece of text with metadata.
@@ -46,7 +47,7 @@ func (d *Document) WithSubIndexes(indexes []string) *Document {
 		d.MetaData = make(map[string]any)
 	}
 
-	d.MetaData[metaDataKeySubIndexes] = indexes
+	d.MetaData[docMetaDataKeySubIndexes] = indexes
 
 	return d
 }
@@ -58,7 +59,7 @@ func (d *Document) SubIndexes() []string {
 		return nil
 	}
 
-	indexes, ok := d.MetaData[metaDataKeySubIndexes].([]string)
+	indexes, ok := d.MetaData[docMetaDataKeySubIndexes].([]string)
 	if ok {
 		return indexes
 	}
@@ -73,7 +74,7 @@ func (d *Document) WithScore(score float64) *Document {
 		d.MetaData = make(map[string]any)
 	}
 
-	d.MetaData[metaDataKeyScore] = score
+	d.MetaData[docMetaDataKeyScore] = score
 
 	return d
 }
@@ -85,7 +86,7 @@ func (d *Document) Score() float64 {
 		return 0
 	}
 
-	score, ok := d.MetaData[metaDataKeyScore].(float64)
+	score, ok := d.MetaData[docMetaDataKeyScore].(float64)
 	if ok {
 		return score
 	}
@@ -93,26 +94,26 @@ func (d *Document) Score() float64 {
 	return 0
 }
 
-// WithVikingExtraInfo sets the extra info of the document.
-// can use doc.VikingExtraInfo() to get the extra info.
-func (d *Document) WithVikingExtraInfo(extraInfo string) *Document {
+// WithExtraInfo sets the extra info of the document.
+// can use doc.ExtraInfo() to get the extra info.
+func (d *Document) WithExtraInfo(extraInfo string) *Document {
 	if d.MetaData == nil {
 		d.MetaData = make(map[string]any)
 	}
 
-	d.MetaData[metaDataKeyVikingExtraInfo] = extraInfo
+	d.MetaData[docMetaDataKeyExtraInfo] = extraInfo
 
 	return d
 }
 
-// VikingExtraInfo returns the extra info of the document.
-// can use doc.WithVikingExtraInfo() to set the extra info.
-func (d *Document) VikingExtraInfo() string {
+// ExtraInfo returns the extra info of the document.
+// can use doc.WithExtraInfo() to set the extra info.
+func (d *Document) ExtraInfo() string {
 	if d.MetaData == nil {
 		return ""
 	}
 
-	extraInfo, ok := d.MetaData[metaDataKeyVikingExtraInfo].(string)
+	extraInfo, ok := d.MetaData[docMetaDataKeyExtraInfo].(string)
 	if ok {
 		return extraInfo
 	}
@@ -120,26 +121,26 @@ func (d *Document) VikingExtraInfo() string {
 	return ""
 }
 
-// WithVikingDSLInfo sets the dsl info of the document.
-// can use doc.VikingDSLInfo() to get the dsl info.
-func (d *Document) WithVikingDSLInfo(dslInfo map[string]any) *Document {
+// WithDSLInfo sets the dsl info of the document.
+// can use doc.DSLInfo() to get the dsl info.
+func (d *Document) WithDSLInfo(dslInfo map[string]any) *Document {
 	if d.MetaData == nil {
 		d.MetaData = make(map[string]any)
 	}
 
-	d.MetaData[metaDataKeyVikingDSL] = dslInfo
+	d.MetaData[docMetaDataKeyDSL] = dslInfo
 
 	return d
 }
 
-// VikingDSLInfo returns the dsl info of the document.
-// can use doc.WithVikingDSLInfo() to set the dsl info.
-func (d *Document) VikingDSLInfo() map[string]any {
+// DSLInfo returns the dsl info of the document.
+// can use doc.WithDSLInfo() to set the dsl info.
+func (d *Document) DSLInfo() map[string]any {
 	if d.MetaData == nil {
 		return nil
 	}
 
-	dslInfo, ok := d.MetaData[metaDataKeyVikingDSL].(map[string]any)
+	dslInfo, ok := d.MetaData[docMetaDataKeyDSL].(map[string]any)
 	if ok {
 		return dslInfo
 	}
@@ -147,28 +148,55 @@ func (d *Document) VikingDSLInfo() map[string]any {
 	return nil
 }
 
-// WithVector sets the vector of the document.
-// can use doc.Vector() to get the vector.
-func (d *Document) WithVector(vector []float64) *Document {
+// WithDenseVector sets the dense vector of the document.
+// can use doc.DenseVector() to get the dense vector.
+func (d *Document) WithDenseVector(vector []float64) *Document {
 	if d.MetaData == nil {
 		d.MetaData = make(map[string]any)
 	}
 
-	d.MetaData[metaDataKeyVector] = vector
+	d.MetaData[docMetaDataKeyDenseVector] = vector
 
 	return d
 }
 
-// Vector returns the vector of the document.
-// can use doc.WithVector() to set the vector.
-func (d *Document) Vector() []float64 {
+// DenseVector returns the dense vector of the document.
+// can use doc.WithDenseVector() to set the dense vector.
+func (d *Document) DenseVector() []float64 {
 	if d.MetaData == nil {
 		return nil
 	}
 
-	vector, ok := d.MetaData[metaDataKeyVector].([]float64)
+	vector, ok := d.MetaData[docMetaDataKeyDenseVector].([]float64)
 	if ok {
 		return vector
+	}
+
+	return nil
+}
+
+// WithSparseVector sets the sparse vector of the document, key indices -> value vector.
+// can use doc.SparseVector() to get the sparse vector.
+func (d *Document) WithSparseVector(sparse map[int]float64) *Document {
+	if d.MetaData == nil {
+		d.MetaData = make(map[string]any)
+	}
+
+	d.MetaData[docMetaDataKeySparseVector] = sparse
+
+	return d
+}
+
+// SparseVector returns the sparse vector of the document, key indices -> value vector.
+// can use doc.WithSparseVector() to set the sparse vector.
+func (d *Document) SparseVector() map[int]float64 {
+	if d.MetaData == nil {
+		return nil
+	}
+
+	sparse, ok := d.MetaData[docMetaDataKeySparseVector].(map[int]float64)
+	if ok {
+		return sparse
 	}
 
 	return nil

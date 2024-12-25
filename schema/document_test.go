@@ -39,15 +39,15 @@ func TestDocument(t *testing.T) {
 		}
 
 		d.WithSubIndexes(subIndexes).
-			WithVector(vector).
+			WithDenseVector(vector).
 			WithScore(score).
-			WithVikingExtraInfo(extraInfo).
-			WithVikingDSLInfo(dslInfo)
+			WithExtraInfo(extraInfo).
+			WithDSLInfo(dslInfo)
 
 		convey.So(d.SubIndexes(), convey.ShouldEqual, subIndexes)
 		convey.So(d.Score(), convey.ShouldEqual, score)
-		convey.So(d.VikingExtraInfo(), convey.ShouldEqual, extraInfo)
-		convey.So(d.VikingDSLInfo(), convey.ShouldEqual, dslInfo)
-		convey.So(d.Vector(), convey.ShouldEqual, vector)
+		convey.So(d.ExtraInfo(), convey.ShouldEqual, extraInfo)
+		convey.So(d.DSLInfo(), convey.ShouldEqual, dslInfo)
+		convey.So(d.DenseVector(), convey.ShouldEqual, vector)
 	})
 }

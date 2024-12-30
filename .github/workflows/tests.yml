@@ -1,18 +1,30 @@
 name: EinoTests
 
-on: [ pull_request ]
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  DEFAULT_GO_VERSION: "1.18"
 
 jobs:
-  unit_test:
-    name: "eino unit test"
+  unit-test:
+    name: eino-unit-test
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_FILE: coverage.out
+      BREAKDOWN_FILE: main.breakdown
+      
     steps:
       - uses: actions/checkout@v4
-      - name: "Set up Go"
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.18"
-      - name: "GoTest"
+          go-version: ${{ env.DEFAULT_GO_VERSION }}
+          
+      - name: Exec Go Test
         run: |
           modules=`find . -name "go.mod" -exec dirname {} \;`
           echo $modules
@@ -21,51 +33,54 @@ jobs:
           if [[ ! -f "go.work" ]];then go work init;fi
           for module in $modules; do go work use $module; list=$module"/... "$list; coverpkg=$module"/...,"$coverpkg; done
           go work sync
-          go test -race -coverprofile=coverage.out -gcflags="all=-l -N" -coverpkg=$coverpkg $list
-      # Download main (aka base) branch breakdown
+          go test -race -v -coverprofile=${{ env.COVERAGE_FILE }} -gcflags="all=-l -N" -coverpkg=$coverpkg $list
+          
       - name: Download Artifact (main.breakdown)
         id: download-main-breakdown
-        uses: dawidd6/action-download-artifact@v6
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
-          branch: main
-          workflow_conclusion: success
-          name: main.breakdown
-          if_no_artifact_found: warn
-      - name: Ensure default.breakdown exists if download fails
+          name: ${{ env.BREAKDOWN_FILE }}
+          fail-not-found: false
+          
+      - name: Create main.breakdown If Not Exist
         run: |
-          if [ ! -f main.breakdown ]; then
-            echo "main.breakdown not found. Creating an empty main.breakdown file."
-            touch main.breakdown
+          if [ ! -f ${{ env.BREAKDOWN_FILE }} ]; then
+            echo "${{ env.BREAKDOWN_FILE }} not found. Creating an empty file."
+            touch ${{ env.BREAKDOWN_FILE }}
           else
-            echo "main.breakdown found."
+            echo "${{ env.BREAKDOWN_FILE }} found."
           fi
-      - name: "Test Coverage"
+          
+      - name: Calculate Coverage
+        id: coverage
         uses: vladopajic/go-test-coverage@v2
         with:
           config: ./.testcoverage.yml
-          # Save current coverage breakdown if current branch is main. It will be
-          # uploaded as artifact in step below.
-          breakdown-file-name: ${{ github.ref_name == 'main' && 'main.breakdown' || '' }}
+          profile: ${{ env.COVERAGE_FILE}}
+          breakdown-file-name: ${{ github.ref_name == 'main' && env.BREAKDOWN_FILE || '' }}
+          diff-base-breakdown-file-name: ${{ env.BREAKDOWN_FILE }}
 
-          # If this is not main branch we want to show report including
-          # file coverage difference from main branch.
-          diff-base-breakdown-file-name: ${{ steps.download-main-breakdown.outputs.found_artifact && 'main.breakdown' || 'main.breakdown' }}
+          # to generate and embed coverage badges in markdown files
+          git-token: ${{ github.ref_name == 'main' && secrets.GITHUB_TOKEN || '' }}
+          git-branch: badges
+          
       - name: Upload Artifact (main.breakdown)
         uses: actions/upload-artifact@v4
         if: github.ref_name == 'main'
         with:
-          name: main.breakdown
-          path: main.breakdown # as specified via `breakdown-file-name`
+          name: ${{ env.BREAKDOWN_FILE }}
+          path: ${{ env.BREAKDOWN_FILE }}
           if-no-files-found: error
-      - name: find if coverage report is already present
+      - name: Find If coverage Report Exist
         if: ${{ github.event.pull_request.number != null }}
         uses: peter-evans/find-comment@v3
         id: fc
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: 'go-test-coverage report:'
-      - name: post coverage report
+          body-includes: '📊 Coverage Report'
+      - name: Send Coverage Report
         if: ${{ github.event.pull_request.number != null }}
         uses: peter-evans/create-or-update-comment@v4
         with:
@@ -74,33 +89,32 @@ jobs:
           comment-id: ${{ steps.fc.outputs.comment-id || '' }}
           edit-mode: replace
           body: |
-            go-test-coverage report:
+            ## 📊 Coverage Report:
+            
             ```
-            ${{ steps.coverage.outputs.report && fromJSON(steps.coverage.outputs.report) || 'No coverage report available' }} ```
+            ${{ steps.coverage.outputs.report && fromJSON(steps.coverage.outputs.report) || 'No coverage report available' }}
+            ```
 
-      - name: "finally check coverage"
+      - name: Check Coverage
         if: steps.coverage.outcome == 'failure'
         shell: bash
         run: echo "coverage check failed" && exit 1
-  unit-benchmark-test:
+  benchmark-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: ${{ env.DEFAULT_GO_VERSION }}
 
-      - name: Unit Test
-        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
-
-      - name: Benchmark
+      - name: Run Benchmark Tests
         run: go test -bench=. -benchmem -run=none ./...
 
   compatibility-test:
     strategy:
       matrix:
-        go: [ "1.18", "1.19", "1.20", "1.21", "1.22" ]
+        go: [ "1.19", "1.20", "1.21", "1.22" ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +122,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-          cache: true # don't use cache for self-hosted runners
-      - name: Unit Test
-        run: go test -race -covermode=atomic ./...
+          cache: true
+
+      - name: Compatibility Test
+        run: |
+          # just basic unit test, no coverage report
+          go test -race ./...

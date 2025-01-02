@@ -1,4 +1,6 @@
-package compose
+package workflow
+
+import "github.com/cloudwego/eino/compose"
 
 type Mapping struct {
 	From string
@@ -10,13 +12,13 @@ type Mapping struct {
 	ToMapKey string
 }
 
-type WorkflowNode struct {
+type Node struct {
 	Key    string
 	Inputs []*Mapping
 }
 
 type Workflow[I, O any] struct {
-	Nodes []*WorkflowNode
+	Nodes []*Node
 	End   []*Mapping
 }
 
@@ -24,13 +26,13 @@ func NewWorkflow[I, O any]() *Workflow[I, O] {
 	return &Workflow[I, O]{}
 }
 
-func (wf *Workflow[I, O]) AddLambdaNode(key string, lambda *Lambda, opts ...GraphAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{Key: key}
+func (wf *Workflow[I, O]) AddLambdaNode(key string, lambda *compose.Lambda, opts ...compose.GraphAddNodeOpt) *Node {
+	node := &Node{Key: key}
 	wf.Nodes = append(wf.Nodes, node)
 	return node
 }
 
-func (n *WorkflowNode) AddInput(inputs ...*Mapping) *WorkflowNode {
+func (n *Node) AddInput(inputs ...*Mapping) *Node {
 	n.Inputs = append(n.Inputs, inputs...)
 	return n
 }

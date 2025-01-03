@@ -33,6 +33,7 @@ const (
 	ComponentOfPassthrough component = "Passthrough"
 	ComponentOfToolsNode   component = "ToolsNode"
 	ComponentOfLambda      component = "Lambda"
+	ComponentOfWorkflow    component = "Workflow"
 )
 
 // NodeTriggerMode controls the triggering mode of graph nodes.

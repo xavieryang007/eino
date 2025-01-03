@@ -11,16 +11,6 @@ import (
 	"github.com/cloudwego/eino/components/retriever"
 )
 
-type Mapping struct {
-	From string
-
-	FromField  string
-	FromMapKey string
-
-	ToField  string
-	ToMapKey string
-}
-
 type WorkflowNode struct {
 	key    string
 	inputs []*Mapping
@@ -35,9 +25,12 @@ type Workflow[I, O any] struct {
 }
 
 func NewWorkflow[I, O any](opts ...NewGraphOption) *Workflow[I, O] {
-	return &Workflow[I, O]{
+	wf := &Workflow[I, O]{
 		g: NewGraph[I, O](opts...),
 	}
+
+	wf.g.cmp = ComponentOfWorkflow
+	return wf
 }
 
 type WorkflowCompileOption GraphCompileOption
@@ -242,23 +235,6 @@ func (wf *Workflow[I, O]) AddLambdaNode(key string, lambda *Lambda, opts ...Work
 	}
 
 	err := wf.g.AddLambdaNode(key, lambda, convertAddNodeOpts(opts)...)
-	if err != nil {
-		wf.err = err
-		return node
-	}
-
-	return node
-}
-
-func (wf *Workflow[I, O]) AddPassthroughNode(key string, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
-	wf.nodes = append(wf.nodes, node)
-
-	if wf.err != nil {
-		return node
-	}
-
-	err := wf.g.AddPassthroughNode(key, convertAddNodeOpts(opts)...)
 	if err != nil {
 		wf.err = err
 		return node

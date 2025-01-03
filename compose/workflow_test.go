@@ -1,10 +1,8 @@
-package workflow
+package compose
 
 import (
 	"context"
 	"testing"
-
-	"github.com/cloudwego/eino/compose"
 )
 
 func TestWorkflow(t *testing.T) {
@@ -30,10 +28,10 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"B",
-			compose.InvokableLambda(func(context.Context, string) (*structB, error) {
+			InvokableLambda(func(context.Context, string) (*structB, error) {
 				return &structB{field1: "1", field2: 2}, nil
 			}),
-			compose.WithNodeName("node B")).
+			WithWorkflowNodeName("node B")).
 		AddInput(&Mapping{
 			From:      "START",
 			FromField: "field1",
@@ -42,7 +40,7 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"C",
-			compose.InvokableLambda(func(context.Context, int) (map[string]string, error) {
+			InvokableLambda(func(context.Context, int) (map[string]string, error) {
 				return map[string]string{"key2": "value2"}, nil
 			})).
 		AddInput(&Mapping{
@@ -53,7 +51,7 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"D",
-			compose.InvokableLambda(func(context.Context, []any) ([]any, error) {
+			InvokableLambda(func(context.Context, []any) ([]any, error) {
 				return make([]any, 0), nil
 			})).
 		AddInput(&Mapping{
@@ -64,7 +62,7 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"E",
-			compose.InvokableLambda(func(context.Context, *structE) (string, error) {
+			InvokableLambda(func(context.Context, *structE) (string, error) {
 				return "", nil
 			})).
 		AddInput(&Mapping{

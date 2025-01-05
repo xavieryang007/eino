@@ -9,20 +9,6 @@ import (
 	"github.com/cloudwego/eino/utils/generic"
 )
 
-type Mapping struct {
-	From string
-
-	FromField  string
-	FromMapKey string
-
-	ToField  string
-	ToMapKey string
-}
-
-func (m *Mapping) empty() bool {
-	return len(m.FromField) == 0 && len(m.FromMapKey) == 0 && len(m.ToField) == 0 && len(m.ToMapKey) == 0
-}
-
 func takeOne(input any, m Mapping) (any, error) {
 	if len(m.FromField) == 0 && len(m.FromMapKey) == 0 {
 		return input, nil
@@ -142,21 +128,17 @@ func assignOne[T any](dest T, taken any, m Mapping) (T, error) {
 	return toAssign.Interface().(T), nil
 }
 
-type fieldMapper[T any] struct {
-	mappings []Mapping
-}
-
-func (f *fieldMapper[T]) mapFrom(input any) (T, error) {
+func mapFrom[T any](input any, mappings []Mapping) (T, error) {
 	t := generic.NewInstance[T]()
 
-	if len(f.mappings) == 0 {
+	if len(mappings) == 0 {
 		return t, errors.New("mapper has no Mappings")
 	}
 
-	from := f.mappings[0].From
-	for _, mapping := range f.mappings {
+	from := mappings[0].From
+	for _, mapping := range mappings {
 		if len(mapping.ToField) == 0 && len(mapping.ToMapKey) == 0 {
-			if len(f.mappings) > 1 {
+			if len(mappings) > 1 {
 				return t, fmt.Errorf("one of the mapping maps to entire input, conflict")
 			}
 		}
@@ -179,18 +161,14 @@ func (f *fieldMapper[T]) mapFrom(input any) (T, error) {
 	return t, nil
 }
 
-func (f *fieldMapper[T]) fieldMap() func(any) (any, error) {
-	return func(input any) (any, error) {
-		return f.mapFrom(input)
-	}
-}
-
-func (f *fieldMapper[T]) streamFieldMap() func(input streamReader) streamReader {
+func streamMap[T any](mappings []Mapping) func(input streamReader) streamReader {
 	return func(input streamReader) streamReader {
 		converted := schema.StreamReaderWithConvert(input.toAnyStreamReader(), func(v any) (T, error) {
-			return f.mapFrom(v)
+			return mapFrom[T](v, mappings)
 		})
 
 		return packStreamReader(converted)
 	}
 }
+
+type streamMapper func(mappings []Mapping) func(input streamReader) streamReader

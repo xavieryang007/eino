@@ -27,4 +27,5 @@ type AnyGraph interface {
 	inputType() reflect.Type
 	outputType() reflect.Type
 	component() component
+	streamMapper() streamMapper
 }

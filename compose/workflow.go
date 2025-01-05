@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/components/embedding"
@@ -9,11 +10,28 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/components/retriever"
+	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/utils/generic"
 )
 
+type Mapping struct {
+	From string
+
+	FromField  string
+	FromMapKey string
+
+	ToField  string
+	ToMapKey string
+}
+
+func (m *Mapping) empty() bool {
+	return len(m.FromField) == 0 && len(m.FromMapKey) == 0 && len(m.ToField) == 0 && len(m.ToMapKey) == 0
+}
+
 type WorkflowNode struct {
-	key    string
-	inputs []*Mapping
+	key          string
+	inputs       []*Mapping
+	streamMapper streamMapper
 }
 
 type Workflow[I, O any] struct {
@@ -88,7 +106,7 @@ func convertAddNodeOpts(opts []WorkflowAddNodeOpt) []GraphAddNodeOpt {
 }
 
 func (wf *Workflow[I, O]) AddChatModelNode(key string, chatModel model.ChatModel, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[*schema.Message]}
 	wf.nodes = append(wf.nodes, node)
 
 	if wf.err != nil {
@@ -104,7 +122,7 @@ func (wf *Workflow[I, O]) AddChatModelNode(key string, chatModel model.ChatModel
 }
 
 func (wf *Workflow[I, O]) AddChatTemplateNode(key string, chatTemplate prompt.ChatTemplate, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]*schema.Message]}
 	wf.nodes = append(wf.nodes, node)
 
 	if wf.err != nil {
@@ -121,7 +139,7 @@ func (wf *Workflow[I, O]) AddChatTemplateNode(key string, chatTemplate prompt.Ch
 }
 
 func (wf *Workflow[I, O]) AddToolsNode(key string, tools *ToolsNode, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]*schema.Message]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -136,7 +154,7 @@ func (wf *Workflow[I, O]) AddToolsNode(key string, tools *ToolsNode, opts ...Wor
 }
 
 func (wf *Workflow[I, O]) AddRetrieverNode(key string, retriever retriever.Retriever, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]*schema.Document]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -151,7 +169,7 @@ func (wf *Workflow[I, O]) AddRetrieverNode(key string, retriever retriever.Retri
 }
 
 func (wf *Workflow[I, O]) AddEmbeddingNode(key string, embedding embedding.Embedder, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[][]float64]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -166,7 +184,7 @@ func (wf *Workflow[I, O]) AddEmbeddingNode(key string, embedding embedding.Embed
 }
 
 func (wf *Workflow[I, O]) AddIndexerNode(key string, indexer indexer.Indexer, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]string]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -181,7 +199,7 @@ func (wf *Workflow[I, O]) AddIndexerNode(key string, indexer indexer.Indexer, op
 }
 
 func (wf *Workflow[I, O]) AddLoaderNode(key string, loader document.Loader, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]*schema.Document]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -196,7 +214,7 @@ func (wf *Workflow[I, O]) AddLoaderNode(key string, loader document.Loader, opts
 }
 
 func (wf *Workflow[I, O]) AddDocumentTransformerNode(key string, transformer document.Transformer, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: streamMap[[]*schema.Document]}
 	wf.nodes = append(wf.nodes, node)
 	if wf.err != nil {
 		return node
@@ -211,7 +229,7 @@ func (wf *Workflow[I, O]) AddDocumentTransformerNode(key string, transformer doc
 }
 
 func (wf *Workflow[I, O]) AddGraphNode(key string, graph AnyGraph, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: graph.streamMapper()}
 	wf.nodes = append(wf.nodes, node)
 
 	if wf.err != nil {
@@ -227,7 +245,7 @@ func (wf *Workflow[I, O]) AddGraphNode(key string, graph AnyGraph, opts ...Workf
 }
 
 func (wf *Workflow[I, O]) AddLambdaNode(key string, lambda *Lambda, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key}
+	node := &WorkflowNode{key: key, streamMapper: lambda.streamMapper}
 	wf.nodes = append(wf.nodes, node)
 
 	if wf.err != nil {
@@ -250,4 +268,25 @@ func (n *WorkflowNode) AddInput(inputs ...*Mapping) *WorkflowNode {
 
 func (wf *Workflow[I, O]) AddEnd(inputs []*Mapping) {
 	wf.end = inputs
+}
+
+func (wf *Workflow[I, O]) compile(ctx context.Context, options *graphCompileOptions) (*composableRunnable, error) {
+	options.nodeTriggerMode = AllPredecessor
+	return wf.g.compile(ctx, options)
+}
+
+func (wf *Workflow[I, O]) inputType() reflect.Type {
+	return generic.TypeOf[I]()
+}
+
+func (wf *Workflow[I, O]) outputType() reflect.Type {
+	return generic.TypeOf[O]()
+}
+
+func (wf *Workflow[I, O]) component() component {
+	return wf.g.component()
+}
+
+func (wf *Workflow[I, O]) streamMapper() streamMapper {
+	return wf.g.streamMapper()
 }

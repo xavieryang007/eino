@@ -10,34 +10,30 @@ import (
 
 func TestFieldMapping(t *testing.T) {
 	t.Run("whole mapped to whole", func(t *testing.T) {
-		m := &fieldMapper[string]{
-			mappings: []Mapping{
-				{
-					From: "upper",
-				},
+		m := []Mapping{
+			{
+				From: "upper",
 			},
 		}
 
-		out, err := m.mapFrom("correct input")
+		out, err := mapFrom[string]("correct input", m)
 		assert.NoError(t, err)
 		assert.Equal(t, "correct input", out)
 
-		out, err = m.mapFrom("")
+		out, err = mapFrom[string]("", m)
 		assert.NoError(t, err)
 		assert.Equal(t, "", out)
 
-		_, err = m.mapFrom(1)
+		_, err = mapFrom[string](1, m)
 		assert.ErrorContains(t, err, "mismatched type")
 
-		m1 := &fieldMapper[any]{
-			mappings: []Mapping{
-				{
-					From: "upper",
-				},
+		m1 := []Mapping{
+			{
+				From: "upper",
 			},
 		}
 
-		out1, err := m1.mapFrom("correct input")
+		out1, err := mapFrom[any]("correct input", m1)
 		assert.NoError(t, err)
 		assert.Equal(t, "correct input", out1)
 	})
@@ -49,91 +45,83 @@ func TestFieldMapping(t *testing.T) {
 			F3 int
 		}
 
-		m := &fieldMapper[string]{
-			mappings: []Mapping{
-				{
-					From:      "upper",
-					FromField: "F1",
-				},
+		m := []Mapping{
+			{
+				From:      "upper",
+				FromField: "F1",
 			},
 		}
 
-		out, err := m.mapFrom(&up{F1: "field1"})
+		out, err := mapFrom[string](&up{F1: "field1"}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, "field1", out)
 
-		out, err = m.mapFrom(&up{F1: ""})
+		out, err = mapFrom[string](&up{F1: ""}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, "", out)
 
-		out, err = m.mapFrom(up{F1: "field1"})
+		out, err = mapFrom[string](up{F1: "field1"}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, "field1", out)
 
-		m.mappings[0].FromField = "f2"
-		_, err = m.mapFrom(&up{f2: "f2"})
+		m[0].FromField = "f2"
+		_, err = mapFrom[string](&up{f2: "f2"}, m)
 		assert.ErrorContains(t, err, "not exported")
 
-		m.mappings[0].FromField = "field3"
-		_, err = m.mapFrom(&up{F3: 3})
+		m[0].FromField = "field3"
+		_, err = mapFrom[string](&up{F3: 3}, m)
 		assert.ErrorContains(t, err, "FromField not found")
 
-		m.mappings[0].FromField = "F3"
-		_, err = m.mapFrom(&up{F3: 3})
+		m[0].FromField = "F3"
+		_, err = mapFrom[string](&up{F3: 3}, m)
 		assert.ErrorContains(t, err, "mismatched type")
 
-		m1 := &fieldMapper[any]{
-			mappings: []Mapping{
-				{
-					From:      "upper",
-					FromField: "F1",
-				},
+		m1 := []Mapping{
+			{
+				From:      "upper",
+				FromField: "F1",
 			},
 		}
 
-		out1, err := m1.mapFrom(&up{F1: "field1"})
+		out1, err := mapFrom[any](&up{F1: "field1"}, m1)
 		assert.NoError(t, err)
 		assert.Equal(t, "field1", out1)
 	})
 
 	t.Run("map key mapped to whole", func(t *testing.T) {
-		m := &fieldMapper[string]{
-			mappings: []Mapping{
-				{
-					From:       "upper",
-					FromMapKey: "key1",
-				},
+		m := []Mapping{
+			{
+				From:       "upper",
+				FromMapKey: "key1",
 			},
 		}
 
-		out, err := m.mapFrom(map[string]string{"key1": "value1"})
+		out, err := mapFrom[string](map[string]string{"key1": "value1"}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, "value1", out)
 
-		out, err = m.mapFrom(map[string]string{"key1": ""})
+		out, err = mapFrom[string](map[string]string{"key1": ""}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, "", out)
 
-		out, err = m.mapFrom(map[string]string{"key2": "value2"})
+		out, err = mapFrom[string](map[string]string{"key2": "value2"}, m)
 		assert.ErrorContains(t, err, "FromMapKey not found")
 
-		out, err = m.mapFrom(map[string]int{"key1": 1})
+		out, err = mapFrom[string](map[string]int{"key1": 1}, m)
 		assert.ErrorContains(t, err, "mismatched type")
 
 		type mock string
-		out, err = m.mapFrom(map[mock]string{"key1": "value1"})
+		out, err = mapFrom[string](map[mock]string{"key1": "value1"}, m)
 		assert.ErrorContains(t, err, "not a map with string key")
 
-		m1 := &fieldMapper[any]{
-			mappings: []Mapping{
-				{
-					From:       "upper",
-					FromMapKey: "key1",
-				},
+		m1 := []Mapping{
+			{
+				From:       "upper",
+				FromMapKey: "key1",
 			},
 		}
 
-		out1, err := m1.mapFrom(map[string]string{"key1": "value1"})
+		out1, err := mapFrom[any](map[string]string{"key1": "value1"}, m1)
 		assert.NoError(t, err)
 		assert.Equal(t, "value1", out1)
 	})
@@ -144,71 +132,63 @@ func TestFieldMapping(t *testing.T) {
 			f3 string
 		}
 
-		m := &fieldMapper[down]{
-			mappings: []Mapping{
-				{
-					From:    "upper",
-					ToField: "F1",
-				},
+		m := []Mapping{
+			{
+				From:    "upper",
+				ToField: "F1",
 			},
 		}
 
-		out, err := m.mapFrom("from")
+		out, err := mapFrom[down]("from", m)
 		assert.NoError(t, err)
 		assert.Equal(t, down{F1: "from"}, out)
 
-		out, err = m.mapFrom(1)
+		out, err = mapFrom[down](1, m)
 		assert.ErrorContains(t, err, "mismatched type")
 
-		m.mappings[0].ToField = "f2"
-		_, err = m.mapFrom("from")
+		m[0].ToField = "f2"
+		_, err = mapFrom[down]("from", m)
 		assert.ErrorContains(t, err, "ToField not found")
 
-		m.mappings[0].ToField = "f3"
-		_, err = m.mapFrom("from")
+		m[0].ToField = "f3"
+		_, err = mapFrom[down]("from", m)
 		assert.ErrorContains(t, err, "not exported")
 
-		m1 := &fieldMapper[*down]{
-			mappings: []Mapping{
-				{
-					From:    "upper",
-					ToField: "F1",
-				},
+		m1 := []Mapping{
+			{
+				From:    "upper",
+				ToField: "F1",
 			},
 		}
 
-		out1, err := m1.mapFrom("from")
+		out1, err := mapFrom[*down]("from", m1)
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: "from"}, out1)
 	})
 
 	t.Run("whole mapped to map key", func(t *testing.T) {
-		m := &fieldMapper[map[string]string]{
-			mappings: []Mapping{
-				{
-					From:     "upper",
-					ToMapKey: "key1",
-				},
+		m := []Mapping{
+			{
+				From:     "upper",
+				ToMapKey: "key1",
 			},
 		}
 
-		out, err := m.mapFrom("from")
+		out, err := mapFrom[map[string]string]("from", m)
 		assert.NoError(t, err)
 		assert.Equal(t, map[string]string{"key1": "from"}, out)
-		out, err = m.mapFrom(1)
+		out, err = mapFrom[map[string]string](1, m)
 		assert.ErrorContains(t, err, "mismatched type")
 
 		type mockKey string
-		m1 := &fieldMapper[map[mockKey]string]{
-			mappings: []Mapping{
-				{
-					From:     "upper",
-					ToMapKey: "key1",
-				},
+		m1 := []Mapping{
+			{
+				From:     "upper",
+				ToMapKey: "key1",
 			},
 		}
 
-		_, err = m1.mapFrom("from")
+		_, err = mapFrom[map[mockKey]string]("from", m1)
 		assert.ErrorContains(t, err, "mapping has ToMapKey but output is not a map with string key")
 	})
 
@@ -225,17 +205,15 @@ func TestFieldMapping(t *testing.T) {
 			F1 *inner
 		}
 
-		m := &fieldMapper[*down]{
-			mappings: []Mapping{
-				{
-					From:      "upper",
-					FromField: "F1",
-					ToField:   "F1",
-				},
+		m := []Mapping{
+			{
+				From:      "upper",
+				FromField: "F1",
+				ToField:   "F1",
 			},
 		}
 
-		out, err := m.mapFrom(&up{F1: &inner{in: "in"}})
+		out, err := mapFrom[*down](&up{F1: &inner{in: "in"}}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: &inner{in: "in"}}, out)
 	})
@@ -245,33 +223,29 @@ func TestFieldMapping(t *testing.T) {
 			F1 []string
 		}
 
-		m := &fieldMapper[map[string]any]{
-			mappings: []Mapping{
-				{
-					From:      "upper",
-					FromField: "F1",
-					ToMapKey:  "key1",
-				},
+		m := []Mapping{
+			{
+				From:      "upper",
+				FromField: "F1",
+				ToMapKey:  "key1",
 			},
 		}
 
-		out, err := m.mapFrom(&up{F1: []string{"in"}})
+		out, err := mapFrom[map[string]any](&up{F1: []string{"in"}}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, map[string]any{"key1": []string{"in"}}, out)
 	})
 
 	t.Run("map key mapped to map key", func(t *testing.T) {
-		m := &fieldMapper[map[string]any]{
-			mappings: []Mapping{
-				{
-					From:       "upper",
-					FromMapKey: "key1",
-					ToMapKey:   "key2",
-				},
+		m := []Mapping{
+			{
+				From:       "upper",
+				FromMapKey: "key1",
+				ToMapKey:   "key2",
 			},
 		}
 
-		out, err := m.mapFrom(map[string]any{"key1": "value1"})
+		out, err := mapFrom[map[string]any](map[string]any{"key1": "value1"}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, map[string]any{"key2": "value1"}, out)
 	})
@@ -281,17 +255,15 @@ func TestFieldMapping(t *testing.T) {
 			F1 io.Reader
 		}
 
-		m := &fieldMapper[*down]{
-			mappings: []Mapping{
-				{
-					From:       "upper",
-					FromMapKey: "key1",
-					ToField:    "F1",
-				},
+		m := []Mapping{
+			{
+				From:       "upper",
+				FromMapKey: "key1",
+				ToField:    "F1",
 			},
 		}
 
-		out, err := m.mapFrom(map[string]any{"key1": &bytes.Buffer{}})
+		out, err := mapFrom[*down](map[string]any{"key1": &bytes.Buffer{}}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: &bytes.Buffer{}}, out)
 	})
@@ -302,36 +274,34 @@ func TestFieldMapping(t *testing.T) {
 			F2 int
 		}
 
-		m := &fieldMapper[*down]{
-			mappings: []Mapping{
-				{
-					From:       "upper",
-					FromMapKey: "key1",
-					ToField:    "F1",
-				},
-				{
-					From:       "upper",
-					FromMapKey: "key2",
-					ToField:    "F2",
-				},
+		m := []Mapping{
+			{
+				From:       "upper",
+				FromMapKey: "key1",
+				ToField:    "F1",
+			},
+			{
+				From:       "upper",
+				FromMapKey: "key2",
+				ToField:    "F2",
 			},
 		}
 
-		out, err := m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		out, err := mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: "v1", F2: 2}, out)
 
-		m.mappings[0].From = "different_upper"
-		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		m[0].From = "different_upper"
+		out, err = mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
 		assert.ErrorContains(t, err, "multiple mappings from the same node have different keys")
 
-		m.mappings[0].From = "upper"
-		m.mappings[0].ToField = ""
-		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		m[0].From = "upper"
+		m[0].ToField = ""
+		out, err = mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
 		assert.ErrorContains(t, err, "one of the mapping maps to entire input, conflict")
 
-		m.mappings = []Mapping{}
-		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		m = []Mapping{}
+		out, err = mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
 		assert.ErrorContains(t, err, "mapper has no Mappings")
 	})
 }

@@ -295,4 +295,43 @@ func TestFieldMapping(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: &bytes.Buffer{}}, out)
 	})
+
+	t.Run("multiple mappings", func(t *testing.T) {
+		type down struct {
+			F1 string
+			F2 int
+		}
+
+		m := &fieldMapper[*down]{
+			mappings: []Mapping{
+				{
+					From:       "upper",
+					FromMapKey: "key1",
+					ToField:    "F1",
+				},
+				{
+					From:       "upper",
+					FromMapKey: "key2",
+					ToField:    "F2",
+				},
+			},
+		}
+
+		out, err := m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		assert.NoError(t, err)
+		assert.Equal(t, &down{F1: "v1", F2: 2}, out)
+
+		m.mappings[0].From = "different_upper"
+		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		assert.ErrorContains(t, err, "multiple mappings from the same node have different keys")
+
+		m.mappings[0].From = "upper"
+		m.mappings[0].ToField = ""
+		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		assert.ErrorContains(t, err, "one of the mapping maps to entire input, conflict")
+
+		m.mappings = []Mapping{}
+		out, err = m.mapFrom(map[string]any{"key1": "v1", "key2": 2})
+		assert.ErrorContains(t, err, "mapper has no Mappings")
+	})
 }

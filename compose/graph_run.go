@@ -56,8 +56,6 @@ type chanCall struct {
 	writeToBranches []*GraphBranch
 
 	preProcessor, postProcessor *composableRunnable
-
-	writeToWithMapping map[string]*fieldMapper
 }
 
 type channel interface {

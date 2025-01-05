@@ -1,8 +1,12 @@
 package compose
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/utils/generic"
 )
 
 type Mapping struct {
@@ -19,7 +23,7 @@ func (m *Mapping) empty() bool {
 	return len(m.FromField) == 0 && len(m.FromMapKey) == 0 && len(m.ToField) == 0 && len(m.ToMapKey) == 0
 }
 
-func (m *Mapping) take(input any) (any, error) {
+func takeOne(input any, m Mapping) (any, error) {
 	if len(m.FromField) == 0 && len(m.FromMapKey) == 0 {
 		return input, nil
 	}
@@ -58,7 +62,7 @@ func (m *Mapping) take(input any) (any, error) {
 	}
 
 	if !reflect.TypeOf(m.FromMapKey).AssignableTo(inputType.Key()) {
-		return nil, fmt.Errorf("mapping has FromKey but input is not a map with string typed key, type=%v", inputType)
+		return nil, fmt.Errorf("mapping has FromKey but input is not a map with string key, type=%v", inputType)
 	}
 
 	v := typedInput.MapIndex(reflect.ValueOf(m.FromMapKey))
@@ -68,136 +72,125 @@ func (m *Mapping) take(input any) (any, error) {
 	return v.Interface(), nil
 }
 
-func (m *Mapping) assignTo(output reflect.Value, taken any) error {
-	if len(m.ToField) == 0 && len(m.ToMapKey) == 0 {
-		return nil
+func assignOne[T any](dest T, taken any, m Mapping) (T, error) {
+	outputType := generic.TypeOf[T]()
+	toAssign := reflect.ValueOf(dest)
+
+	if !toAssign.CanAddr() {
+		toAssign = reflect.ValueOf(&dest).Elem()
+	}
+
+	if len(m.ToField) == 0 && len(m.ToMapKey) == 0 { // assign to output directly
+		toSet := reflect.ValueOf(taken)
+		if !toSet.Type().AssignableTo(outputType) {
+			return dest, fmt.Errorf("mapping entire value has a mismatched type. from=%v, to=%v", toSet.Type(), outputType)
+		}
+
+		toAssign.Set(toSet)
+
+		return toAssign.Interface().(T), nil
 	}
 
 	if len(m.ToField) > 0 && len(m.ToMapKey) > 0 {
-		return fmt.Errorf("mapping has both ToField and ToMapKey, m=%+v", m)
-	}
-
-	outputType := output.Type()
-	if outputType.Kind() == reflect.Ptr {
-		outputType = outputType.Elem()
-		output = output.Elem()
+		return dest, fmt.Errorf("mapping has both ToField and ToMapKey, m=%+v", m)
 	}
 
 	if len(m.ToField) > 0 {
-		if outputType.Kind() != reflect.Struct {
-			return fmt.Errorf("mapping has ToField but output is not a struct, type=%v", outputType)
+		realToAssign := toAssign
+
+		if outputType.Kind() == reflect.Ptr {
+			outputType = outputType.Elem()
+			realToAssign = realToAssign.Elem()
 		}
 
-		field := output.FieldByName(m.ToField)
+		if outputType.Kind() != reflect.Struct {
+			return dest, fmt.Errorf("mapping has ToField but output is not a struct, type=%v", outputType)
+		}
+
+		field := realToAssign.FieldByName(m.ToField)
 		if !field.IsValid() {
-			return fmt.Errorf("mapping has ToField not found. field=%v, outputType=%v", m.ToField, outputType)
+			return dest, fmt.Errorf("mapping has ToField not found. field=%v, outputType=%v", m.ToField, outputType)
 		}
 
 		if !field.CanSet() {
-			return fmt.Errorf("mapping has ToField not exported. field=%v, outputType=%v", m.ToField, outputType)
+			return dest, fmt.Errorf("mapping has ToField not exported. field=%v, outputType=%v", m.ToField, outputType)
 		}
 
 		toSet := reflect.ValueOf(taken)
 		if !toSet.Type().AssignableTo(field.Type()) {
-			return fmt.Errorf("mapping ToField has a mismatched type. field=%s, from=%v, to=%v", m.ToField, toSet.Type(), field.Type())
+			return dest, fmt.Errorf("mapping ToField has a mismatched type. field=%s, from=%v, to=%v", m.ToField, toSet.Type(), field.Type())
 		}
 
 		field.Set(toSet)
-		return nil
+		return toAssign.Interface().(T), nil
 	}
 
 	if outputType.Kind() != reflect.Map {
-		return fmt.Errorf("mapping has ToMapKey but output is not a map, type=%v", outputType)
+		return dest, fmt.Errorf("mapping has ToMapKey but output is not a map, type=%v", outputType)
 	}
 
 	if !reflect.TypeOf(m.ToMapKey).AssignableTo(outputType.Key()) {
-		return fmt.Errorf("mapping has ToMapKey but output is not a map with string typed key, type=%v", outputType)
+		return dest, fmt.Errorf("mapping has ToMapKey but output is not a map with string key, type=%v", outputType)
 	}
 
 	toSet := reflect.ValueOf(taken)
 	if !toSet.Type().AssignableTo(outputType.Elem()) {
-		return fmt.Errorf("mapping ToMapKey has a mismatched type. key=%s, from=%v, to=%v", m.ToMapKey, toSet.Type(), outputType.Elem())
+		return dest, fmt.Errorf("mapping ToMapKey has a mismatched type. key=%s, from=%v, to=%v", m.ToMapKey, toSet.Type(), outputType.Elem())
 	}
 
-	output.SetMapIndex(reflect.ValueOf(m.ToMapKey), toSet)
-	return nil
+	toAssign.SetMapIndex(reflect.ValueOf(m.ToMapKey), toSet)
+	return toAssign.Interface().(T), nil
 }
 
-type fieldMapper struct {
+type fieldMapper[T any] struct {
 	mappings []Mapping
-	fType    reflect.Type
-	rType    reflect.Type
 }
 
-func (m *fieldMapper) fieldMap(input any) (any, error) {
-	if len(m.mappings) == 0 {
-		return input, nil
+func (f *fieldMapper[T]) mapFrom(input any) (T, error) {
+	t := generic.NewInstance[T]()
+
+	if len(f.mappings) == 0 {
+		return t, errors.New("mapper has no Mappings")
 	}
 
-	typedInput := reflect.ValueOf(input)
-	if !typedInput.Type().AssignableTo(m.fType) {
-		return nil, fmt.Errorf("input type mismatch, expected: %v, got: %v", m.fType, typedInput.Type())
-	}
-
-	var (
-		fType = typedInput.Type()
-		rType = m.rType
-	)
-
-	fIsPtr := fType.Kind() == reflect.Ptr
-	rIsPtr := rType.Kind() == reflect.Ptr
-
-	if !fIsPtr {
-		fType = m.fType
-	} else {
-		fType = m.fType.Elem()
-	}
-
-	if !rIsPtr {
-		rType = m.rType
-	} else {
-		rType = m.rType.Elem()
-	}
-
-	mapped := reflect.New(rType).Elem()
-	from := m.mappings[0].From
-	for _, mapping := range m.mappings {
-		if mapping.empty() {
-			return nil, fmt.Errorf("mapping is empty")
-		}
-
+	from := f.mappings[0].From
+	for _, mapping := range f.mappings {
 		if len(mapping.ToField) == 0 && len(mapping.ToMapKey) == 0 {
-			if len(m.mappings) > 1 {
-				return nil, fmt.Errorf("one of the mapping maps to entire input, conflict")
+			if len(f.mappings) > 1 {
+				return t, fmt.Errorf("one of the mapping maps to entire input, conflict")
 			}
 		}
 
 		if mapping.From != from {
-			return nil, fmt.Errorf("multiple mappings from the same node have different keys: %s, %s", mapping.From, from)
+			return t, fmt.Errorf("multiple mappings from the same node have different keys: %s, %s", mapping.From, from)
 		}
 
-		taken, err := mapping.take(input)
+		taken, err := takeOne(input, mapping)
 		if err != nil {
-			return nil, err
+			return t, err
 		}
 
-		err = mapping.assignTo(mapped, taken)
+		t, err = assignOne(t, taken, mapping)
 		if err != nil {
-			return nil, err
+			return t, err
 		}
 	}
 
-	if rIsPtr {
-		return mapped.Addr().Interface(), nil
-	}
-
-	return mapped.Interface(), nil
+	return t, nil
 }
 
-func (m *fieldMapper) streamFieldMap(input streamReader) streamReader {
-	if len(m.mappings) == 0 {
-		return input
+func (f *fieldMapper[T]) fieldMap() func(any) (any, error) {
+	return func(input any) (any, error) {
+		return f.mapFrom(input)
 	}
+}
 
-	panic("not implemented")
+func (f *fieldMapper[T]) streamFieldMap() func(input streamReader) streamReader {
+	return func(input streamReader) streamReader {
+		converted := schema.StreamReaderWithConvert(input.toAnyStreamReader(), func(v any) (T, error) {
+			return f.mapFrom(v)
+		})
+
+		return packStreamReader(converted)
+	}
 }

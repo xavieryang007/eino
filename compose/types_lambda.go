@@ -198,7 +198,7 @@ func anyLambda[I, O, TOption any](i Invoke[I, O, TOption], s Stream[I, O, TOptio
 
 	return &Lambda{
 		executor:    executor,
-		fieldMapper: defaultFieldMapper[O]{},
+		fieldMapper: defaultFieldMapper[I]{},
 	}
 }
 

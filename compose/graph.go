@@ -166,6 +166,7 @@ type graph struct {
 
 	edge2FieldMapFn       map[string]map[string]fieldMapFn
 	edge2StreamFieldMapFn map[string]map[string]streamFieldMapFn
+	node2Mappings         map[string][]*Mapping
 
 	buildError error
 
@@ -205,6 +206,7 @@ func newGraph( // nolint: byted_s_args_length_limit
 
 		edge2FieldMapFn:       make(map[string]map[string]fieldMapFn),
 		edge2StreamFieldMapFn: make(map[string]map[string]streamFieldMapFn),
+		node2Mappings:         make(map[string][]*Mapping),
 
 		cmp: cmp,
 
@@ -351,6 +353,14 @@ func (g *graph) addEdgeWithMappings(startNode, endNode string, fn fieldMapFn, st
 		}
 
 		g.edge2StreamFieldMapFn[startNode][endNode] = streamFn
+	}
+
+	if len(mappings) > 0 {
+		if _, ok := g.node2Mappings[endNode]; !ok {
+			g.node2Mappings[endNode] = make([]*Mapping, 0, len(mappings))
+		}
+
+		g.node2Mappings[endNode] = append(g.node2Mappings[endNode], mappings...)
 	}
 
 	return nil
@@ -831,6 +841,9 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 
 		runtimeCheckEdges:    g.runtimeCheckEdges,
 		runtimeCheckBranches: g.runtimeCheckBranches,
+
+		edge2FieldMapFn:       g.edge2FieldMapFn,
+		edge2StreamFieldMapFn: g.edge2StreamFieldMapFn,
 	}
 
 	if runType == runTypeDAG {
@@ -929,6 +942,7 @@ func (g *graph) toGraphInfo(opt *graphCompileOptions, key2SubGraphs map[string]*
 			Name:             gNode.nodeInfo.name,
 			InputKey:         gNode.cr.nodeInfo.inputKey,
 			OutputKey:        gNode.cr.nodeInfo.outputKey,
+			Mappings:         g.node2Mappings[key],
 		}
 
 		if gi, ok := key2SubGraphs[key]; ok {

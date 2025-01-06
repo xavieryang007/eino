@@ -89,6 +89,9 @@ type runner struct {
 
 	runtimeCheckEdges    map[string]map[string]bool
 	runtimeCheckBranches map[string][]bool
+
+	edge2FieldMapFn       map[string]map[string]fieldMapFn
+	edge2StreamFieldMapFn map[string]map[string]streamFieldMapFn
 }
 
 func (r *runner) toComposableRunnable() *composableRunnable {
@@ -466,6 +469,15 @@ func (r *runner) calculateNext(ctx context.Context, curNodeKey string, startChan
 }
 
 func (r *runner) parserOrValidateTypeIfNeeded(cur, next string, isStream bool, value any) (any, error) {
+	mapped, done, err := r.doFieldMap(cur, next, isStream, value)
+	if err != nil {
+		return nil, err
+	}
+
+	if done {
+		return mapped, nil
+	}
+
 	if _, ok := r.runtimeCheckEdges[cur]; !ok {
 		return value, nil
 	}
@@ -489,9 +501,40 @@ func (r *runner) parserOrValidateTypeIfNeeded(cur, next string, isStream bool, v
 		value = r.chanSubscribeTo[next].action.inputStreamConverter(value.(streamReader))
 		return value, nil
 	}
-	err := r.chanSubscribeTo[next].action.inputValueChecker(value)
+	err = r.chanSubscribeTo[next].action.inputValueChecker(value)
 	if err != nil {
 		return nil, fmt.Errorf("edge[%s]-[%s] runtime value check fail: %w", cur, next, err)
 	}
 	return value, nil
+}
+
+func (r *runner) doFieldMap(cur, next string, isStream bool, value any) (any, bool, error) {
+	if isStream {
+		if _, ok := r.edge2StreamFieldMapFn[cur]; !ok {
+			return value, false, nil
+		}
+
+		f, ok := r.edge2StreamFieldMapFn[cur][next]
+		if !ok {
+			return value, false, nil
+		}
+
+		return f(value.(streamReader)), true, nil
+	}
+
+	if _, ok := r.edge2FieldMapFn[cur]; !ok {
+		return value, false, nil
+	}
+
+	f, ok := r.edge2FieldMapFn[cur][next]
+	if !ok {
+		return value, false, nil
+	}
+
+	mapped, err := f(value)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return mapped, true, nil
 }

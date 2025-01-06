@@ -3,24 +3,26 @@ package compose
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWorkflow(t *testing.T) {
 	type structA struct {
-		field1 string
-		field2 int
-		field3 []any
+		Field1 string
+		Field2 int
+		Field3 []any
 	}
 
 	type structB struct {
-		field1 string
-		field2 int
+		Field1 string
+		Field2 int
 	}
 
 	type structE struct {
-		field1 string
-		field2 string
-		field3 []any
+		Field1 string
+		Field2 string
+		Field3 []any
 	}
 
 	w := NewWorkflow[*structA, string]()
@@ -29,12 +31,12 @@ func TestWorkflow(t *testing.T) {
 		AddLambdaNode(
 			"B",
 			InvokableLambda(func(context.Context, string) (*structB, error) {
-				return &structB{field1: "1", field2: 2}, nil
+				return &structB{Field1: "1", Field2: 2}, nil
 			}),
 			WithWorkflowNodeName("node B")).
 		AddInput(&Mapping{
-			From:      "START",
-			FromField: "field1",
+			From:      START,
+			FromField: "Field1",
 		})
 
 	w.
@@ -44,8 +46,8 @@ func TestWorkflow(t *testing.T) {
 				return map[string]string{"key2": "value2"}, nil
 			})).
 		AddInput(&Mapping{
-			From:      "START",
-			FromField: "field2",
+			From:      START,
+			FromField: "Field2",
 		})
 
 	w.
@@ -55,8 +57,8 @@ func TestWorkflow(t *testing.T) {
 				return make([]any, 0), nil
 			})).
 		AddInput(&Mapping{
-			From:      "START",
-			FromField: "field3",
+			From:      START,
+			FromField: "Field3",
 		})
 
 	w.
@@ -67,18 +69,32 @@ func TestWorkflow(t *testing.T) {
 			})).
 		AddInput(&Mapping{
 			From:      "B",
-			FromField: "field1",
-			ToField:   "field2",
+			FromField: "Field1",
+			ToField:   "Field1",
 		}, &Mapping{
 			From:       "C",
 			FromMapKey: "key2",
-			ToField:    "field3",
+			ToField:    "Field2",
 		}, &Mapping{
 			From:    "D",
-			ToField: "field3",
+			ToField: "Field3",
 		})
 
 	w.AddEnd([]*Mapping{{
 		From: "E",
 	}})
+
+	ctx := context.Background()
+	compiled, err := w.Compile(ctx)
+	assert.NoError(t, err)
+
+	out, err := compiled.Invoke(ctx, &structA{
+		Field1: "1",
+		Field2: 2,
+		Field3: []any{
+			1, "good",
+		},
+	})
+	assert.NoError(t, err)
+	t.Logf(out)
 }

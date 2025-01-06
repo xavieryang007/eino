@@ -271,6 +271,10 @@ func (g *graph) addNode(key string, node *graphNode, options *graphAddNodeOpts) 
 //
 //	err := graph.AddEdge("start_node_key", "end_node_key")
 func (g *graph) AddEdge(startNode, endNode string) (err error) {
+	return g.addEdgeWithMappings(startNode, endNode)
+}
+
+func (g *graph) addEdgeWithMappings(startNode, endNode string, mappings ...*Mapping) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
@@ -307,7 +311,7 @@ func (g *graph) AddEdge(startNode, endNode string) (err error) {
 		return fmt.Errorf("edge end node '%s' needs to be added to graph first", endNode)
 	}
 
-	err = g.validateAndInferType(startNode, endNode)
+	err = g.validateAndInferType(startNode, endNode, mappings...)
 	if err != nil {
 		return err
 	}
@@ -443,7 +447,7 @@ func (g *graph) AddLambdaNode(key string, node *Lambda, opts ...GraphAddNodeOpt)
 	return g.addNode(key, gNode, options)
 }
 
-// AddGraphNode add one kind of Graph[I, O]、Chain[I, O]、StateChain[I, O, S] as a node.
+// AddGraphNode add one kind of Graph[I, O], Chain[I, O] or Workflow[I, O] as a node.
 // for Graph[I, O], comes from NewGraph[I, O]()
 // for Chain[I, O], comes from NewChain[I, O]()
 func (g *graph) AddGraphNode(key string, node AnyGraph, opts ...GraphAddNodeOpt) error {
@@ -543,12 +547,12 @@ func (g *graph) AddBranch(startNode string, branch *GraphBranch) (err error) {
 	return nil
 }
 
-func (g *graph) validateAndInferType(startNode, endNode string) error {
+func (g *graph) validateAndInferType(startNode, endNode string, mappings ...*Mapping) (err error) {
 	startNodeOutputType := g.getNodeOutputType(startNode)
 	endNodeInputType := g.getNodeInputType(endNode)
 
 	// assume that START and END type isn't empty
-	// check and update current node. if cannot validate, save edge to toValidateMap
+	// check and update current node. if it cannot validate, save edge to toValidateMap
 	if startNodeOutputType == nil && endNodeInputType == nil {
 		// type of passthrough have not been inferred yet. defer checking to compile.
 		g.toValidateMap[startNode] = append(g.toValidateMap[startNode], endNode)
@@ -560,7 +564,7 @@ func (g *graph) validateAndInferType(startNode, endNode string) error {
 		// start node is passthrough, propagate end node input type to it
 		g.nodes[startNode].cr.inputType = endNodeInputType
 		g.nodes[startNode].cr.outputType = g.nodes[startNode].cr.inputType
-	} else {
+	} else if len(mappings) == 0 || mappings[0].empty() {
 		// common node check
 		result := checkAssignable(startNodeOutputType, endNodeInputType)
 		if result == assignableTypeMustNot {
@@ -572,6 +576,40 @@ func (g *graph) validateAndInferType(startNode, endNode string) error {
 				g.runtimeCheckEdges[startNode] = make(map[string]bool)
 			}
 			g.runtimeCheckEdges[startNode][endNode] = true
+		}
+	} else {
+		if startNodeOutputType == anyType || endNodeInputType == anyType { // input or output is any, can't do any check here, defer to request time
+			return nil
+		}
+
+		for _, m := range mappings {
+			fromType := startNodeOutputType
+			toType := endNodeInputType
+
+			if len(m.FromMapKey) > 0 {
+				if fromType, err = checkAndExtractMapValueType(m.FromMapKey, fromType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] start node's output failed, %w", startNode, endNode, m, err)
+				}
+			} else if len(m.FromField) > 0 {
+				if fromType, err = checkAndExtractFieldType(m.FromField, fromType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] start node's output failed, %w", startNode, endNode, m, err)
+				}
+			}
+
+			if len(m.ToMapKey) > 0 {
+				if toType, err = checkAndExtractMapValueType(m.ToMapKey, toType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] end node's input failed, %w", startNode, endNode, m, err)
+				}
+			} else if len(m.ToField) > 0 {
+				if toType, err = checkAndExtractFieldType(m.ToField, toType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] end node's input failed, %w", startNode, endNode, m, err)
+				}
+			}
+
+			if checkAssignable(fromType, toType) == assignableTypeMustNot {
+				return fmt.Errorf("graph edge[%s]-[%s]: after mapping[%v], start node's output type[%s] and end node's input type[%s] mismatch",
+					m, startNode, endNode, fromType.String(), toType.String())
+			}
 		}
 	}
 	return nil

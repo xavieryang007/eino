@@ -139,6 +139,6 @@ func (g *Graph[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 	return rp, nil
 }
 
-func (g *Graph[I, O]) streamMapper() streamMapper {
-	return streamMap[O]
+func (g *Graph[I, O]) fieldMapper() fieldMapper {
+	return defaultFieldMapper[O]{}
 }

@@ -140,8 +140,8 @@ func (c *Chain[I, O]) component() component {
 	return c.gg.component()
 }
 
-func (c *Chain[I, O]) streamMapper() streamMapper {
-	return c.gg.streamMapper()
+func (c *Chain[I, O]) fieldMapper() fieldMapper {
+	return c.gg.fieldMapper()
 }
 
 // Compile to a Runnable.

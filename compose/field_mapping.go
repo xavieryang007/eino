@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/eino/utils/generic"
 )
 
-func takeOne(input any, m Mapping) (any, error) {
+func takeOne(input any, m *Mapping) (any, error) {
 	if len(m.FromField) == 0 && len(m.FromMapKey) == 0 {
 		return input, nil
 	}
@@ -37,7 +37,7 @@ func takeOne(input any, m Mapping) (any, error) {
 	return v.Interface(), nil
 }
 
-func assignOne[T any](dest T, taken any, m Mapping) (T, error) {
+func assignOne[T any](dest T, taken any, m *Mapping) (T, error) {
 	destValue := reflect.ValueOf(dest)
 
 	if !destValue.CanAddr() {
@@ -80,7 +80,7 @@ func assignOne[T any](dest T, taken any, m Mapping) (T, error) {
 	return destValue.Interface().(T), nil
 }
 
-func mapFrom[T any](input any, mappings []Mapping) (T, error) {
+func mapFrom[T any](input any, mappings []*Mapping) (T, error) {
 	t := generic.NewInstance[T]()
 
 	if len(mappings) == 0 {
@@ -113,15 +113,18 @@ func mapFrom[T any](input any, mappings []Mapping) (T, error) {
 	return t, nil
 }
 
+type fieldMapFn func(any) (any, error)
+type streamFieldMapFn func(streamReader) streamReader
+
 type defaultFieldMapper[T any] struct{}
 
-func (d defaultFieldMapper[T]) fieldMap(mappings []Mapping) func(input any) (any, error) {
+func (d defaultFieldMapper[T]) fieldMap(mappings []*Mapping) fieldMapFn {
 	return func(input any) (any, error) {
 		return mapFrom[T](input, mappings)
 	}
 }
 
-func (d defaultFieldMapper[T]) streamFieldMap(mappings []Mapping) func(input streamReader) streamReader {
+func (d defaultFieldMapper[T]) streamFieldMap(mappings []*Mapping) streamFieldMapFn {
 	return func(input streamReader) streamReader {
 		converted := schema.StreamReaderWithConvert(input.toAnyStreamReader(), func(v any) (T, error) {
 			return mapFrom[T](v, mappings)
@@ -132,8 +135,8 @@ func (d defaultFieldMapper[T]) streamFieldMap(mappings []Mapping) func(input str
 }
 
 type fieldMapper interface {
-	streamFieldMap(mappings []Mapping) func(input streamReader) streamReader
-	fieldMap(mappings []Mapping) func(input any) (any, error)
+	streamFieldMap(mappings []*Mapping) streamFieldMapFn
+	fieldMap(mappings []*Mapping) fieldMapFn
 }
 
 var (

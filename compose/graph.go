@@ -164,6 +164,9 @@ type graph struct {
 	runtimeCheckEdges    map[string]map[string]bool
 	runtimeCheckBranches map[string][]bool
 
+	edge2FieldMapFn       map[string]map[string]fieldMapFn
+	edge2StreamFieldMapFn map[string]map[string]streamFieldMapFn
+
 	buildError error
 
 	cmp component
@@ -199,6 +202,9 @@ func newGraph( // nolint: byted_s_args_length_limit
 
 		runtimeCheckEdges:    make(map[string]map[string]bool),
 		runtimeCheckBranches: make(map[string][]bool),
+
+		edge2FieldMapFn:       make(map[string]map[string]fieldMapFn),
+		edge2StreamFieldMapFn: make(map[string]map[string]streamFieldMapFn),
 
 		cmp: cmp,
 
@@ -271,10 +277,10 @@ func (g *graph) addNode(key string, node *graphNode, options *graphAddNodeOpts) 
 //
 //	err := graph.AddEdge("start_node_key", "end_node_key")
 func (g *graph) AddEdge(startNode, endNode string) (err error) {
-	return g.addEdgeWithMappings(startNode, endNode)
+	return g.addEdgeWithMappings(startNode, endNode, nil, nil)
 }
 
-func (g *graph) addEdgeWithMappings(startNode, endNode string, mappings ...*Mapping) (err error) {
+func (g *graph) addEdgeWithMappings(startNode, endNode string, fn fieldMapFn, streamFn streamFieldMapFn, mappings ...*Mapping) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
@@ -329,6 +335,22 @@ func (g *graph) addEdgeWithMappings(startNode, endNode string, mappings ...*Mapp
 	err = g.updateToValidateMap()
 	if err != nil {
 		return err
+	}
+
+	if fn != nil {
+		if _, ok := g.edge2FieldMapFn[startNode]; !ok {
+			g.edge2FieldMapFn[startNode] = make(map[string]fieldMapFn)
+		}
+
+		g.edge2FieldMapFn[startNode][endNode] = fn
+	}
+
+	if streamFn != nil {
+		if _, ok := g.edge2StreamFieldMapFn[startNode]; !ok {
+			g.edge2StreamFieldMapFn[startNode] = make(map[string]streamFieldMapFn)
+		}
+
+		g.edge2StreamFieldMapFn[startNode][endNode] = streamFn
 	}
 
 	return nil

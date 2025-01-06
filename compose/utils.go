@@ -49,6 +49,76 @@ func mergeMap(vs []any) (any, error) {
 	return merged.Interface(), nil
 }
 
+func mergeStruct(vs []any) (any, error) {
+	typ := reflect.TypeOf(vs[0])
+	merged := reflect.New(typ).Elem()
+
+	for _, v := range vs {
+		if reflect.TypeOf(v) != typ {
+			return nil, fmt.Errorf(
+				"(mergeStruct) type mismatch. expected: '%v', got: '%v'", typ, reflect.TypeOf(v))
+		}
+
+		value := reflect.ValueOf(v)
+		for i := 0; i < typ.NumField(); i++ {
+			sField := typ.Field(i)
+			vField := value.Field(i)
+			if vField.IsZero() {
+				continue
+			}
+
+			if !sField.IsExported() {
+				return nil, fmt.Errorf("(mergeStruct) field = %s not exported and not zero value, type= %v", sField.Name, typ)
+			}
+
+			mergedField := merged.Field(i)
+			if !mergedField.IsZero() {
+				return nil, fmt.Errorf("(mergeStruct) more than one field (%s) are non-zero, conflict, type= %v", sField.Name, typ)
+			}
+
+			mergedField.Set(vField)
+		}
+	}
+
+	return merged.Interface(), nil
+}
+
+func mergeStructPtr(vs []any) (any, error) {
+	typ := reflect.TypeOf(vs[0])
+	elemType := typ.Elem()
+	merged := reflect.New(elemType).Elem()
+
+	for _, v := range vs {
+		if reflect.TypeOf(v) != typ {
+			return nil, fmt.Errorf(
+				"(mergeStruct) type mismatch. expected: '%v', got: '%v'", typ, reflect.TypeOf(v))
+		}
+
+		ptrValue := reflect.ValueOf(v)
+		value := ptrValue.Elem()
+		for i := 0; i < elemType.NumField(); i++ {
+			sField := elemType.Field(i)
+			vField := value.Field(i)
+			if vField.IsZero() {
+				continue
+			}
+
+			if !sField.IsExported() {
+				return nil, fmt.Errorf("(mergeStruct) field = %s not exported and not zero value, type= %v", sField.Name, elemType)
+			}
+
+			mergedField := merged.Field(i)
+			if !mergedField.IsZero() {
+				return nil, fmt.Errorf("(mergeStruct) more than one field (%s) are non-zero, conflict, type= %v", sField.Name, elemType)
+			}
+
+			mergedField.Set(vField)
+		}
+	}
+
+	return merged.Addr().Interface(), nil
+}
+
 // the caller should ensure len(vs) > 1
 func mergeValues(vs []any) (any, error) {
 	v0 := reflect.ValueOf(vs[0])
@@ -60,7 +130,13 @@ func mergeValues(vs []any) (any, error) {
 	}
 
 	if s, ok := vs[0].(streamReader); ok {
-		if s.getChunkType().Kind() != reflect.Map {
+		chunkType := s.getChunkType()
+		if chunkType.Kind() == reflect.Ptr {
+			if chunkType.Elem().Kind() != reflect.Struct {
+				return nil, fmt.Errorf("(mergeValues | stream type)"+
+					" unsupported chunk type: %v", s.getChunkType())
+			}
+		} else if chunkType.Kind() != reflect.Map && chunkType.Kind() != reflect.Struct {
 			return nil, fmt.Errorf("(mergeValues | stream type)"+
 				" unsupported chunk type: %v", s.getChunkType())
 		}
@@ -84,6 +160,16 @@ func mergeValues(vs []any) (any, error) {
 		ms := s.merge(ss)
 
 		return ms, nil
+	}
+
+	if k0 == reflect.Struct {
+		return mergeStruct(vs)
+	}
+
+	if k0 == reflect.Ptr {
+		if t0.Elem().Kind() == reflect.Struct {
+			return mergeStructPtr(vs)
+		}
 	}
 
 	return nil, fmt.Errorf("(mergeValues) unsupported type: %v", t0)

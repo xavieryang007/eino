@@ -2,6 +2,8 @@ package compose
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,8 +44,8 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"C",
-			InvokableLambda(func(context.Context, int) (map[string]string, error) {
-				return map[string]string{"key2": "value2"}, nil
+			InvokableLambda(func(_ context.Context, in int) (map[string]string, error) {
+				return map[string]string{"key2": fmt.Sprintf("%d", in)}, nil
 			})).
 		AddInput(&Mapping{
 			From:      START,
@@ -53,8 +55,8 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"D",
-			InvokableLambda(func(context.Context, []any) ([]any, error) {
-				return make([]any, 0), nil
+			InvokableLambda(func(_ context.Context, in []any) ([]any, error) {
+				return in, nil
 			})).
 		AddInput(&Mapping{
 			From:      START,
@@ -64,8 +66,8 @@ func TestWorkflow(t *testing.T) {
 	w.
 		AddLambdaNode(
 			"E",
-			InvokableLambda(func(context.Context, *structE) (string, error) {
-				return "", nil
+			InvokableLambda(func(_ context.Context, in *structE) (string, error) {
+				return in.Field1 + "_" + in.Field2 + "_" + fmt.Sprintf("%v", in.Field3[0]), nil
 			})).
 		AddInput(&Mapping{
 			From:      "B",
@@ -88,13 +90,31 @@ func TestWorkflow(t *testing.T) {
 	compiled, err := w.Compile(ctx)
 	assert.NoError(t, err)
 
-	out, err := compiled.Invoke(ctx, &structA{
+	input := &structA{
 		Field1: "1",
 		Field2: 2,
 		Field3: []any{
 			1, "good",
 		},
-	})
+	}
+	out, err := compiled.Invoke(ctx, input)
 	assert.NoError(t, err)
-	t.Logf(out)
+	assert.Equal(t, "1_2_1", out)
+
+	outStream, err := compiled.Stream(ctx, input)
+	assert.NoError(t, err)
+	defer outStream.Close()
+	for {
+		chunk, err := outStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			t.Error(err)
+			return
+		}
+
+		assert.Equal(t, "1_2_1", chunk)
+	}
 }

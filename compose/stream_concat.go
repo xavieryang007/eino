@@ -263,9 +263,41 @@ func concatSliceValue(val reflect.Value) (reflect.Value, error) {
 	}
 
 	f := getConcatFunc(elmType)
-	if f == nil {
-		return reflect.Value{}, fmt.Errorf("cannot concat value of type %s", elmType)
+	if f != nil {
+		return f(val)
 	}
 
-	return f(val)
+	var isStruct, isStructPtr bool
+	if elmType.Kind() == reflect.Struct {
+		isStruct = true
+	} else if elmType.Kind() == reflect.Pointer && elmType.Elem().Kind() == reflect.Struct {
+		isStructPtr = true
+	}
+
+	if isStruct || isStructPtr {
+		anyVals := make([]any, val.Len())
+		for i := 0; i < val.Len(); i++ {
+			sliceElem := val.Index(i)
+			anyVals[i] = sliceElem.Interface()
+		}
+
+		var (
+			merged any
+			err    error
+		)
+
+		if isStruct {
+			merged, err = mergeStruct(anyVals)
+		} else {
+			merged, err = mergeStructPtr(anyVals)
+		}
+
+		if err != nil {
+			return reflect.Value{}, err
+		}
+
+		return reflect.ValueOf(merged), nil
+	}
+
+	return reflect.Value{}, fmt.Errorf("cannot concat value of type %s", elmType)
 }

@@ -140,5 +140,5 @@ func (g *Graph[I, O]) Compile(ctx context.Context, opts ...GraphCompileOption) (
 }
 
 func (g *Graph[I, O]) fieldMapper() fieldMapper {
-	return defaultFieldMapper[O]{}
+	return defaultFieldMapper[I]{}
 }

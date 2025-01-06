@@ -1,3 +1,19 @@
+/*
+ * Copyright 2024 CloudWeGo Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package compose
 
 import (
@@ -5,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/components/embedding"
@@ -17,17 +34,75 @@ import (
 )
 
 type Mapping struct {
-	From string
+	fromNodeKey string
 
-	FromField  string
-	FromMapKey string
+	fromField  string
+	fromMapKey string
 
-	ToField  string
-	ToMapKey string
+	toField  string
+	toMapKey string
 }
 
 func (m *Mapping) empty() bool {
-	return len(m.FromField) == 0 && len(m.FromMapKey) == 0 && len(m.ToField) == 0 && len(m.ToMapKey) == 0
+	return len(m.fromField) == 0 && len(m.fromMapKey) == 0 && len(m.toField) == 0 && len(m.toMapKey) == 0
+}
+
+func (m *Mapping) FromField(fieldName string) *Mapping {
+	m.fromField = fieldName
+	return m
+}
+
+func (m *Mapping) ToField(fieldName string) *Mapping {
+	m.toField = fieldName
+	return m
+}
+
+func (m *Mapping) FromMapKey(mapKey string) *Mapping {
+	m.fromMapKey = mapKey
+	return m
+}
+
+func (m *Mapping) ToMapKey(mapKey string) *Mapping {
+	m.toMapKey = mapKey
+	return m
+}
+
+func (m *Mapping) String() string {
+	var sb strings.Builder
+	sb.WriteString("from ")
+
+	if m.fromMapKey != "" {
+		sb.WriteString(m.fromMapKey)
+		sb.WriteString("(map key) of ")
+	}
+
+	if m.fromField != "" {
+		sb.WriteString(m.fromField)
+		sb.WriteString("(field) of ")
+	}
+
+	sb.WriteString("node '")
+	sb.WriteString(m.fromNodeKey)
+	sb.WriteString("'")
+
+	if m.toField != "" {
+		sb.WriteString(" to ")
+		sb.WriteString(m.toField)
+		sb.WriteString("(field)")
+	}
+
+	if m.toMapKey != "" {
+		sb.WriteString(" to ")
+		sb.WriteString(m.toMapKey)
+		sb.WriteString("(map key)")
+	}
+
+	sb.WriteString("; ")
+	return sb.String()
+}
+
+func NewMapping(fromNodeKey string) *Mapping {
+	return &Mapping{fromNodeKey: fromNodeKey}
 }
 
 type WorkflowNode struct {
@@ -114,7 +189,7 @@ func convertAddNodeOpts(opts []WorkflowAddNodeOpt) []GraphAddNodeOpt {
 }
 
 func (wf *Workflow[I, O]) AddChatModelNode(key string, chatModel model.ChatModel, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[*schema.Message]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Message]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -130,7 +205,7 @@ func (wf *Workflow[I, O]) AddChatModelNode(key string, chatModel model.ChatModel
 }
 
 func (wf *Workflow[I, O]) AddChatTemplateNode(key string, chatTemplate prompt.ChatTemplate, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Message]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[map[string]any]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -147,7 +222,7 @@ func (wf *Workflow[I, O]) AddChatTemplateNode(key string, chatTemplate prompt.Ch
 }
 
 func (wf *Workflow[I, O]) AddToolsNode(key string, tools *ToolsNode, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Message]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[*schema.Message]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -163,7 +238,7 @@ func (wf *Workflow[I, O]) AddToolsNode(key string, tools *ToolsNode, opts ...Wor
 }
 
 func (wf *Workflow[I, O]) AddRetrieverNode(key string, retriever retriever.Retriever, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Document]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[string]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -179,7 +254,7 @@ func (wf *Workflow[I, O]) AddRetrieverNode(key string, retriever retriever.Retri
 }
 
 func (wf *Workflow[I, O]) AddEmbeddingNode(key string, embedding embedding.Embedder, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[][]float64]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]string]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -195,7 +270,7 @@ func (wf *Workflow[I, O]) AddEmbeddingNode(key string, embedding embedding.Embed
 }
 
 func (wf *Workflow[I, O]) AddIndexerNode(key string, indexer indexer.Indexer, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]string]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Document]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -211,7 +286,7 @@ func (wf *Workflow[I, O]) AddIndexerNode(key string, indexer indexer.Indexer, op
 }
 
 func (wf *Workflow[I, O]) AddLoaderNode(key string, loader document.Loader, opts ...WorkflowAddNodeOpt) *WorkflowNode {
-	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[[]*schema.Document]{}}
+	node := &WorkflowNode{key: key, fieldMapper: defaultFieldMapper[document.Source]{}}
 	wf.nodes[key] = node
 
 	if wf.err != nil {
@@ -280,7 +355,7 @@ func (n *WorkflowNode) AddInput(inputs ...*Mapping) *WorkflowNode {
 	return n
 }
 
-func (wf *Workflow[I, O]) AddEnd(inputs []*Mapping) {
+func (wf *Workflow[I, O]) AddEnd(inputs ...*Mapping) {
 	wf.end = inputs
 	wf.endFieldMapper = defaultFieldMapper[O]{}
 }
@@ -314,9 +389,6 @@ func (wf *Workflow[I, O]) addEdgesWithMapping() (err error) {
 	for _, node := range wf.nodes {
 		toNode = node.key
 		fm := node.fieldMapper
-		if fm == nil {
-			return fmt.Errorf("workflow has no field mapper, node = %s", toNode)
-		}
 
 		if len(node.inputs) == 0 {
 			return fmt.Errorf("workflow node = %s has no input", toNode)
@@ -325,7 +397,7 @@ func (wf *Workflow[I, O]) addEdgesWithMapping() (err error) {
 		fromNode2Mappings := make(map[string][]*Mapping, len(node.inputs))
 		for i := range node.inputs {
 			input := node.inputs[i]
-			fromNodeKey := input.From
+			fromNodeKey := input.fromNodeKey
 			fromNode2Mappings[fromNodeKey] = append(fromNode2Mappings[fromNodeKey], input)
 		}
 
@@ -344,15 +416,16 @@ func (wf *Workflow[I, O]) addEdgesWithMapping() (err error) {
 		}
 	}
 
-	fm := wf.endFieldMapper
-	if fm == nil {
-		return errors.New("workflow has no end field mapper")
+	if len(wf.end) == 0 {
+		return errors.New("workflow END has no input mapping")
 	}
+
+	fm := wf.endFieldMapper
 
 	fromNode2EndMappings := make(map[string][]*Mapping, len(wf.end))
 	for i := range wf.end {
 		input := wf.end[i]
-		fromNodeKey := input.From
+		fromNodeKey := input.fromNodeKey
 		fromNode2EndMappings[fromNodeKey] = append(fromNode2EndMappings[fromNodeKey], input)
 	}
 

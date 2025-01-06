@@ -299,5 +299,17 @@ func concatSliceValue(val reflect.Value) (reflect.Value, error) {
 		return reflect.ValueOf(merged), nil
 	}
 
-	return reflect.Value{}, fmt.Errorf("cannot concat value of type %s", elmType)
+	var filtered reflect.Value
+	for i := 0; i < val.Len(); i++ {
+		oneVal := val.Index(i)
+		if !oneVal.IsZero() {
+			if filtered.IsValid() {
+				return reflect.Value{}, fmt.Errorf("cannot concat multiple non-zero value of type %s", elmType)
+			}
+
+			filtered = oneVal
+		}
+	}
+
+	return filtered, nil
 }

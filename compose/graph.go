@@ -618,28 +618,28 @@ func (g *graph) validateAndInferType(startNode, endNode string, mappings ...*Map
 			fromType := startNodeOutputType
 			toType := endNodeInputType
 
-			if len(m.FromMapKey) > 0 {
-				if fromType, err = checkAndExtractMapValueType(m.FromMapKey, fromType); err != nil {
-					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] start node's output failed, %w", startNode, endNode, m, err)
+			if len(m.fromMapKey) > 0 {
+				if fromType, err = checkAndExtractMapValueType(fromType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%s] start node's output failed, %w", startNode, endNode, m, err)
 				}
-			} else if len(m.FromField) > 0 {
-				if fromType, err = checkAndExtractFieldType(m.FromField, fromType); err != nil {
-					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] start node's output failed, %w", startNode, endNode, m, err)
+			} else if len(m.fromField) > 0 {
+				if fromType, err = checkAndExtractFieldType(m.fromField, fromType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%s] start node's output failed, %w", startNode, endNode, m, err)
 				}
 			}
 
-			if len(m.ToMapKey) > 0 {
-				if toType, err = checkAndExtractMapValueType(m.ToMapKey, toType); err != nil {
-					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] end node's input failed, %w", startNode, endNode, m, err)
+			if len(m.toMapKey) > 0 {
+				if toType, err = checkAndExtractMapValueType(toType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%s] end node's input failed, %w", startNode, endNode, m, err)
 				}
-			} else if len(m.ToField) > 0 {
-				if toType, err = checkAndExtractFieldType(m.ToField, toType); err != nil {
-					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%v] end node's input failed, %w", startNode, endNode, m, err)
+			} else if len(m.toField) > 0 {
+				if toType, err = checkAndExtractFieldType(m.toField, toType); err != nil {
+					return fmt.Errorf("graph edge [%s]-[%s]: check mapping[%s] end node's input failed, %w", startNode, endNode, m, err)
 				}
 			}
 
 			if checkAssignable(fromType, toType) == assignableTypeMustNot {
-				return fmt.Errorf("graph edge[%s]-[%s]: after mapping[%v], start node's output type[%s] and end node's input type[%s] mismatch",
+				return fmt.Errorf("graph edge[%s]-[%s]: after mapping[%s], start node's output type[%s] and end node's input type[%s] mismatch",
 					m, startNode, endNode, fromType.String(), toType.String())
 			}
 		}

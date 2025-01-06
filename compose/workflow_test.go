@@ -58,6 +58,10 @@ func TestWorkflow(t *testing.T) {
 		temp string
 	}
 
+	type structEnd struct {
+		Field1 string
+	}
+
 	subGraph := NewGraph[string, *structB]()
 	_ = subGraph.AddLambdaNode(
 		"1",
@@ -78,15 +82,23 @@ func TestWorkflow(t *testing.T) {
 		"1",
 		InvokableLambda(func(_ context.Context, in []any) ([]any, error) {
 			return in, nil
-		})).
+		}),
+		WithOutputKey("key")).
 		AddInput(NewMapping(START))
-	subWorkflow.AddEnd(NewMapping("1"))
+	subWorkflow.AddLambdaNode(
+		"2",
+		InvokableLambda(func(_ context.Context, in []any) ([]any, error) {
+			return in, nil
+		}),
+		WithInputKey("key")).
+		AddInput(NewMapping("1"))
+	subWorkflow.AddEnd(NewMapping("2"))
 
-	w := NewWorkflow[*structA, string](WithGenLocalState(func(context.Context) *state { return &state{} }))
+	w := NewWorkflow[*structA, *structEnd](WithGenLocalState(func(context.Context) *state { return &state{} }))
 
 	w.
-		AddGraphNode("B", subGraph, WithWorkflowNodeName("node B"),
-			WithWorkflowStatePostHandler(func(ctx context.Context, out *structB, state *state) (*structB, error) {
+		AddGraphNode("B", subGraph,
+			WithStatePostHandler(func(ctx context.Context, out *structB, state *state) (*structB, error) {
 				state.temp = out.Field1
 				return out, nil
 			})).
@@ -115,7 +127,7 @@ func TestWorkflow(t *testing.T) {
 					return in, nil
 				}), nil
 			}),
-			WithWorkflowStreamStatePreHandler(func(ctx context.Context, in *schema.StreamReader[structE], state *state) (*schema.StreamReader[structE], error) {
+			WithStreamStatePreHandler(func(ctx context.Context, in *schema.StreamReader[structE], state *state) (*schema.StreamReader[structE], error) {
 				temp := state.temp
 				return schema.StreamReaderWithConvert(in, func(v structE) (structE, error) {
 					if len(v.Field3) > 0 {
@@ -125,7 +137,7 @@ func TestWorkflow(t *testing.T) {
 					return v, nil
 				}), nil
 			}),
-			WithWorkflowStreamStatePostHandler(func(ctx context.Context, out *schema.StreamReader[structE], state *state) (*schema.StreamReader[structE], error) {
+			WithStreamStatePostHandler(func(ctx context.Context, out *schema.StreamReader[structE], state *state) (*schema.StreamReader[structE], error) {
 				return schema.StreamReaderWithConvert(out, func(v structE) (structE, error) {
 					if len(v.Field1) > 0 {
 						v.Field1 = v.Field1 + "+Post"
@@ -145,7 +157,7 @@ func TestWorkflow(t *testing.T) {
 			InvokableLambda(func(ctx context.Context, in map[string]any) (string, error) {
 				return fmt.Sprintf("%v_%v_%v_%v_%v", in["key1"], in["key2"], in["key3"], in["B"], in["state_temp"]), nil
 			}),
-			WithWorkflowStatePreHandler(func(ctx context.Context, in map[string]any, state *state) (map[string]any, error) {
+			WithStatePreHandler(func(ctx context.Context, in map[string]any, state *state) (map[string]any, error) {
 				in["state_temp"] = state.temp
 				return in, nil
 			}),
@@ -157,7 +169,7 @@ func TestWorkflow(t *testing.T) {
 			NewMapping("E").FromField("Field3").ToMapKey("key3"),
 		)
 
-	w.AddEnd(NewMapping("F"))
+	w.AddEnd(NewMapping("F").ToField("Field1"))
 
 	compiled, err := w.Compile(ctx)
 	assert.NoError(t, err)
@@ -171,7 +183,7 @@ func TestWorkflow(t *testing.T) {
 	}
 	out, err := compiled.Invoke(ctx, input)
 	assert.NoError(t, err)
-	assert.Equal(t, "E:1+Post_E:2_[1 good Pre:1]_33_1", out)
+	assert.Equal(t, &structEnd{"E:1+Post_E:2_[1 good Pre:1]_33_1"}, out)
 
 	outStream, err := compiled.Stream(ctx, input)
 	assert.NoError(t, err)
@@ -187,7 +199,7 @@ func TestWorkflow(t *testing.T) {
 			return
 		}
 
-		assert.Equal(t, "E:1+Post_E:2_[1 good Pre:1]_33_1", chunk)
+		assert.Equal(t, &structEnd{"E:1+Post_E:2_[1 good Pre:1]_33_1"}, chunk)
 	}
 }
 

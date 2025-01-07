@@ -129,24 +129,67 @@ func mapFrom[T any](input any, mappings []*Mapping) (T, error) {
 	return t, nil
 }
 
-type fieldMapFn func(any) (any, error)
+func convertTo[T any](mappings map[Mapping]any) (T, error) {
+	t := generic.NewInstance[T]()
+	if len(mappings) == 0 {
+		return t, errors.New("mapper has no Mappings")
+	}
+
+	var err error
+	for mapping, taken := range mappings {
+		if len(mapping.toField) == 0 && len(mapping.toMapKey) == 0 {
+			if len(mappings) > 1 {
+				return t, fmt.Errorf("one of the mapping maps to entire input, conflict")
+			}
+		}
+
+		t, err = assignOne(t, taken, &mapping)
+		if err != nil {
+			return t, err
+		}
+	}
+
+	return t, nil
+}
+
+type fieldMapFn func(any) (map[Mapping]any, error)
 type streamFieldMapFn func(streamReader) streamReader
 
-type defaultFieldMapper[T any] struct{}
+func mappingAssign[T any](in map[Mapping]any) (any, error) {
+	return convertTo[T](in)
+}
 
-func (d defaultFieldMapper[T]) fieldMap(mappings []*Mapping) fieldMapFn {
-	return func(input any) (any, error) {
-		return mapFrom[T](input, mappings)
+func mappingStreamAssign[T any](in streamReader) streamReader {
+	return packStreamReader(schema.StreamReaderWithConvert(in.toAnyStreamReader(), func(v any) (T, error) {
+		var t T
+		mappings, ok := v.(map[Mapping]any)
+		if !ok {
+			return t, fmt.Errorf("stream mapping expects trunk of type map[Mapping]any, but got %T", v)
+		}
+
+		return convertTo[T](mappings)
+	}))
+}
+
+func fieldMap(mappings []*Mapping) fieldMapFn {
+	return func(input any) (map[Mapping]any, error) {
+		result := make(map[Mapping]any, len(mappings))
+		for _, mapping := range mappings {
+			taken, err := takeOne(input, mapping)
+			if err != nil {
+				return nil, err
+			}
+
+			result[*mapping] = taken
+		}
+
+		return result, nil
 	}
 }
 
-func (d defaultFieldMapper[T]) streamFieldMap(mappings []*Mapping) streamFieldMapFn {
+func streamFieldMap(mappings []*Mapping) streamFieldMapFn {
 	return func(input streamReader) streamReader {
-		converted := schema.StreamReaderWithConvert(input.toAnyStreamReader(), func(v any) (T, error) {
-			return mapFrom[T](v, mappings)
-		})
-
-		return packStreamReader(converted)
+		return packStreamReader(schema.StreamReaderWithConvert(input.toAnyStreamReader(), fieldMap(mappings)))
 	}
 }
 

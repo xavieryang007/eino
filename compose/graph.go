@@ -160,6 +160,8 @@ type graph struct {
 	inputStreamConverter                  streamConverter
 	outputValueChecker                    valueChecker
 	outputStreamConverter                 streamConverter
+	preConverter                          *composableRunnable
+	postConverter                         *composableRunnable
 
 	runtimeCheckEdges    map[string]map[string]bool
 	runtimeCheckBranches map[string][]bool
@@ -185,6 +187,7 @@ func newGraph( // nolint: byted_s_args_length_limit
 	cmp component,
 	runCtx func(ctx context.Context) context.Context,
 	enableState bool,
+	preConverter, postConverter *composableRunnable,
 ) *graph {
 	return &graph{
 		nodes:    make(map[string]*graphNode),
@@ -200,6 +203,8 @@ func newGraph( // nolint: byted_s_args_length_limit
 		inputStreamConverter:  inputConv,
 		outputValueChecker:    outputChecker,
 		outputStreamConverter: outputConv,
+		preConverter:          preConverter,
+		postConverter:         postConverter,
 
 		runtimeCheckEdges:    make(map[string]map[string]bool),
 		runtimeCheckBranches: make(map[string][]bool),
@@ -279,10 +284,10 @@ func (g *graph) addNode(key string, node *graphNode, options *graphAddNodeOpts) 
 //
 //	err := graph.AddEdge("start_node_key", "end_node_key")
 func (g *graph) AddEdge(startNode, endNode string) (err error) {
-	return g.addEdgeWithMappings(startNode, endNode, nil, nil)
+	return g.addEdgeWithMappings(startNode, endNode)
 }
 
-func (g *graph) addEdgeWithMappings(startNode, endNode string, fn fieldMapFn, streamFn streamFieldMapFn, mappings ...*Mapping) (err error) {
+func (g *graph) addEdgeWithMappings(startNode, endNode string, mappings ...*Mapping) (err error) {
 	if g.buildError != nil {
 		return g.buildError
 	}
@@ -339,23 +344,19 @@ func (g *graph) addEdgeWithMappings(startNode, endNode string, fn fieldMapFn, st
 		return err
 	}
 
-	if fn != nil {
+	if len(mappings) > 0 {
 		if _, ok := g.edge2FieldMapFn[startNode]; !ok {
 			g.edge2FieldMapFn[startNode] = make(map[string]fieldMapFn)
 		}
 
-		g.edge2FieldMapFn[startNode][endNode] = fn
-	}
+		g.edge2FieldMapFn[startNode][endNode] = fieldMap(mappings)
 
-	if streamFn != nil {
 		if _, ok := g.edge2StreamFieldMapFn[startNode]; !ok {
 			g.edge2StreamFieldMapFn[startNode] = make(map[string]streamFieldMapFn)
 		}
 
-		g.edge2StreamFieldMapFn[startNode][endNode] = streamFn
-	}
+		g.edge2StreamFieldMapFn[startNode][endNode] = streamFieldMap(mappings)
 
-	if len(mappings) > 0 {
 		if _, ok := g.node2Mappings[endNode]; !ok {
 			g.node2Mappings[endNode] = make([]*Mapping, 0, len(mappings))
 		}
@@ -782,6 +783,7 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 
 			preProcessor:  node.nodeInfo.preProcessor,
 			postProcessor: node.nodeInfo.postProcessor,
+			preConverter:  r.preConverter,
 		}
 
 		branches := g.branches[name]
@@ -793,7 +795,6 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		}
 
 		chanSubscribeTo[name] = chCall
-
 	}
 
 	invertedEdges := make(map[string][]string)
@@ -838,12 +839,15 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		inputStreamConverter:  g.inputStreamConverter,
 		outputValueChecker:    g.outputValueChecker,
 		outputStreamConverter: g.outputStreamConverter,
+		preConverter:          g.preConverter,
+		postConverter:         g.postConverter,
 
 		runtimeCheckEdges:    g.runtimeCheckEdges,
 		runtimeCheckBranches: g.runtimeCheckBranches,
 
 		edge2FieldMapFn:       g.edge2FieldMapFn,
 		edge2StreamFieldMapFn: g.edge2StreamFieldMapFn,
+		node2Mappings:         g.node2Mappings,
 	}
 
 	if runType == runTypeDAG {

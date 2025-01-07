@@ -56,6 +56,7 @@ type chanCall struct {
 	writeToBranches []*GraphBranch
 
 	preProcessor, postProcessor *composableRunnable
+	preConverter                *composableRunnable
 }
 
 type channel interface {
@@ -87,11 +88,15 @@ type runner struct {
 	outputValueChecker    valueChecker
 	outputStreamConverter streamConverter
 
+	preConverter  *composableRunnable
+	postConverter *composableRunnable
+
 	runtimeCheckEdges    map[string]map[string]bool
 	runtimeCheckBranches map[string][]bool
 
 	edge2FieldMapFn       map[string]map[string]fieldMapFn
 	edge2StreamFieldMapFn map[string]map[string]streamFieldMapFn
+	node2Mappings         map[string][]*Mapping
 }
 
 func (r *runner) toComposableRunnable() *composableRunnable {
@@ -116,6 +121,7 @@ func (r *runner) toComposableRunnable() *composableRunnable {
 		inputStreamFilter:    r.inputStreamFilter,
 		inputValueChecker:    r.inputValueChecker,
 		inputStreamConverter: r.inputStreamConverter,
+		preConverter:         r.preConverter,
 		optionType:           nil, // if option type is nil, graph will transmit all options.
 
 		isPassthrough: false,
@@ -229,6 +235,16 @@ func (r *runner) run(ctx context.Context, isStream bool, input any, opts ...Opti
 		err     error
 	}
 
+	taskPreConverter := func(ctx context.Context, t *task) error {
+		if _, ok := r.node2Mappings[t.nodeKey]; !ok {
+			return nil
+		}
+
+		var e error
+		t.input, e = runWrapper(ctx, t.call.preConverter, t.input, t.option...)
+		return e
+	}
+
 	taskPreProcessor := func(ctx context.Context, t *task) error {
 		if t.call.preProcessor == nil {
 			return nil
@@ -324,6 +340,16 @@ func (r *runner) run(ctx context.Context, isStream bool, input any, opts ...Opti
 			if err != nil {
 				return nil, err
 			}
+
+			if _, ok := r.node2Mappings[END]; ok {
+				value, err := chs[END].get(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				return runWrapper(ctx, r.postConverter, value)
+			}
+
 			break
 		}
 
@@ -356,6 +382,13 @@ func (r *runner) run(ctx context.Context, isStream bool, input any, opts ...Opti
 
 		if len(nextTasks) == 0 {
 			return nil, errors.New("no tasks to execute")
+		}
+
+		for i := 0; i < len(nextTasks); i++ {
+			e := taskPreConverter(ctx, nextTasks[i])
+			if e != nil {
+				return nil, fmt.Errorf("pre-convert[%s] input error: %w", nextTasks[i].nodeKey, e)
+			}
 		}
 
 		for i := 0; i < len(nextTasks); i++ {

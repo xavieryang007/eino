@@ -140,10 +140,6 @@ func (c *Chain[I, O]) component() component {
 	return c.gg.component()
 }
 
-func (c *Chain[I, O]) fieldMapper() fieldMapper {
-	return c.gg.fieldMapper()
-}
-
 // Compile to a Runnable.
 // Runnable can be used directly.
 // e.g.

@@ -62,8 +62,7 @@ type TransformWOOpts[I, O any] func(ctx context.Context,
 //		return input, nil
 //	})
 type Lambda struct {
-	executor    *composableRunnable
-	fieldMapper fieldMapper
+	executor *composableRunnable
 }
 
 type lambdaOpts struct {
@@ -197,8 +196,7 @@ func anyLambda[I, O, TOption any](i Invoke[I, O, TOption], s Stream[I, O, TOptio
 	}
 
 	return &Lambda{
-		executor:    executor,
-		fieldMapper: defaultFieldMapper[I]{},
+		executor: executor,
 	}
 }
 

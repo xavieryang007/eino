@@ -162,16 +162,6 @@ func mergeValues(vs []any) (any, error) {
 		return ms, nil
 	}
 
-	if k0 == reflect.Struct {
-		return mergeStruct(vs)
-	}
-
-	if k0 == reflect.Ptr {
-		if t0.Elem().Kind() == reflect.Struct {
-			return mergeStructPtr(vs)
-		}
-	}
-
 	return nil, fmt.Errorf("(mergeValues) unsupported type: %v", t0)
 }
 

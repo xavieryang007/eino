@@ -26,6 +26,23 @@ import (
 	"github.com/cloudwego/eino/utils/generic"
 )
 
+func mapFrom[T any](input any, mappings []*Mapping) (T, error) {
+	f := fieldMap(mappings)
+	m, err := f(input)
+	if err != nil {
+		var t T
+		return t, err
+	}
+
+	a, err := mappingAssign[T](m)
+	if err != nil {
+		var t T
+		return t, err
+	}
+
+	return a.(T), nil
+}
+
 func TestFieldMapping(t *testing.T) {
 	t.Run("whole mapped to whole", func(t *testing.T) {
 		m := []*Mapping{NewMapping("1")}
@@ -220,10 +237,6 @@ func TestFieldMapping(t *testing.T) {
 		out, err := mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
 		assert.NoError(t, err)
 		assert.Equal(t, &down{F1: "v1", F2: 2}, out)
-
-		m[0].fromNodeKey = "different_upper"
-		out, err = mapFrom[*down](map[string]any{"key1": "v1", "key2": 2}, m)
-		assert.ErrorContains(t, err, "multiple mappings from the same node have different keys")
 
 		m[0].fromNodeKey = "1"
 		m[0].toField = ""

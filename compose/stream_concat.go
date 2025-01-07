@@ -211,6 +211,9 @@ func concatMaps(ms reflect.Value) (reflect.Value, error) {
 	rms := reflect.MakeMap(reflect.MapOf(typ.Key(), generic.TypeOf[[]any]()))
 	ret := reflect.MakeMap(typ)
 
+	r := ms.Interface()
+	_ = r
+
 	n := ms.Len()
 	for i := 0; i < n; i++ {
 		m := ms.Index(i)
@@ -267,36 +270,36 @@ func concatSliceValue(val reflect.Value) (reflect.Value, error) {
 		return f(val)
 	}
 
-	var isStruct, isStructPtr bool
+	var (
+		structType  reflect.Type
+		isStructPtr bool
+	)
+
 	if elmType.Kind() == reflect.Struct {
-		isStruct = true
+		structType = elmType
 	} else if elmType.Kind() == reflect.Pointer && elmType.Elem().Kind() == reflect.Struct {
 		isStructPtr = true
+		structType = elmType.Elem()
 	}
 
-	if isStruct || isStructPtr {
-		anyVals := make([]any, val.Len())
+	if structType != nil {
+		maps := make([]map[string]any, val.Len())
 		for i := 0; i < val.Len(); i++ {
 			sliceElem := val.Index(i)
-			anyVals[i] = sliceElem.Interface()
+			m, err := structToMap(sliceElem)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+
+			maps = append(maps, m)
 		}
 
-		var (
-			merged any
-			err    error
-		)
-
-		if isStruct {
-			merged, err = mergeStruct(anyVals)
-		} else {
-			merged, err = mergeStructPtr(anyVals)
-		}
-
+		result, err := concatMaps(reflect.ValueOf(maps))
 		if err != nil {
 			return reflect.Value{}, err
 		}
 
-		return reflect.ValueOf(merged), nil
+		return mapToStruct(result.Interface().(map[string]any), structType, isStructPtr), nil
 	}
 
 	var filtered reflect.Value
@@ -312,4 +315,36 @@ func concatSliceValue(val reflect.Value) (reflect.Value, error) {
 	}
 
 	return filtered, nil
+}
+
+func structToMap(s reflect.Value) (map[string]any, error) {
+	if s.Kind() == reflect.Ptr {
+		s = s.Elem()
+	}
+
+	ret := make(map[string]any, s.NumField())
+	for i := 0; i < s.NumField(); i++ {
+		fieldType := s.Type().Field(i)
+		if !fieldType.IsExported() {
+			return nil, fmt.Errorf("structToMap: field %s is not exported", fieldType.Name)
+		}
+
+		ret[fieldType.Name] = s.Field(i).Interface()
+	}
+
+	return ret, nil
+}
+
+func mapToStruct(m map[string]any, t reflect.Type, toPtr bool) reflect.Value {
+	ret := reflect.New(t).Elem()
+	for k, v := range m {
+		field := ret.FieldByName(k)
+		field.Set(reflect.ValueOf(v))
+	}
+
+	if toPtr {
+		ret = ret.Addr()
+	}
+
+	return ret
 }

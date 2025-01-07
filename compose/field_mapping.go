@@ -96,39 +96,6 @@ func assignOne[T any](dest T, taken any, m *Mapping) (T, error) {
 	return destValue.Interface().(T), nil
 }
 
-func mapFrom[T any](input any, mappings []*Mapping) (T, error) {
-	t := generic.NewInstance[T]()
-
-	if len(mappings) == 0 {
-		return t, errors.New("mapper has no Mappings")
-	}
-
-	from := mappings[0].fromNodeKey
-	for _, mapping := range mappings {
-		if len(mapping.toField) == 0 && len(mapping.toMapKey) == 0 {
-			if len(mappings) > 1 {
-				return t, fmt.Errorf("one of the mapping maps to entire input, conflict")
-			}
-		}
-
-		if mapping.fromNodeKey != from {
-			return t, fmt.Errorf("multiple mappings from the same node have different keys: %s, %s", mapping.fromNodeKey, from)
-		}
-
-		taken, err := takeOne(input, mapping)
-		if err != nil {
-			return t, err
-		}
-
-		t, err = assignOne(t, taken, mapping)
-		if err != nil {
-			return t, err
-		}
-	}
-
-	return t, nil
-}
-
 func convertTo[T any](mappings map[Mapping]any) (T, error) {
 	t := generic.NewInstance[T]()
 	if len(mappings) == 0 {
@@ -191,11 +158,6 @@ func streamFieldMap(mappings []*Mapping) streamFieldMapFn {
 	return func(input streamReader) streamReader {
 		return packStreamReader(schema.StreamReaderWithConvert(input.toAnyStreamReader(), fieldMap(mappings)))
 	}
-}
-
-type fieldMapper interface {
-	streamFieldMap(mappings []*Mapping) streamFieldMapFn
-	fieldMap(mappings []*Mapping) fieldMapFn
 }
 
 var (

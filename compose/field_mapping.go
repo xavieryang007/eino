@@ -17,6 +17,7 @@
 package compose
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -69,11 +70,27 @@ func assignOne[T any](dest T, taken any, to string) (T, error) {
 
 }
 
-func convertTo[T any](mappings map[string]any, mustSucceed bool) (T, error) {
+func convertTo[T any](mappings map[Mapping]any, mustSucceed bool) (T, error) {
 	t := generic.NewInstance[T]()
 
-	var err error
-	for fieldName, taken := range mappings {
+	var (
+		err          error
+		field2Values = make(map[string][]any)
+	)
+
+	for m, taken := range mappings {
+		field2Values[m.to] = append(field2Values[m.to], taken)
+	}
+
+	for fieldName, values := range field2Values {
+		taken := values[0]
+		if len(values) > 1 {
+			taken, err = mergeValues(values)
+			if err != nil {
+				return t, fmt.Errorf("convertTo %T failed when merge multiple values for field %s, %w", t, fieldName, err)
+			}
+		}
+
 		t, err = assignOne(t, taken, fieldName)
 		if err != nil {
 			if mustSucceed {
@@ -86,34 +103,34 @@ func convertTo[T any](mappings map[string]any, mustSucceed bool) (T, error) {
 	return t, nil
 }
 
-type fieldMapFn func(any) (map[string]any, error)
+type fieldMapFn func(any) (map[Mapping]any, error)
 type streamFieldMapFn func(streamReader) streamReader
 
-func mappingAssign[T any](in map[string]any, mustSucceed bool) (any, error) {
+func mappingAssign[T any](in map[Mapping]any, mustSucceed bool) (any, error) {
 	return convertTo[T](in, mustSucceed)
 }
 
 func mappingStreamAssign[T any](in streamReader, mustSucceed bool) streamReader {
-	s, ok := unpackStreamReader[map[string]any](in)
+	s, ok := unpackStreamReader[map[Mapping]any](in)
 	if !ok {
 		panic("mappingStreamAssign incoming streamReader chunk type not map[string]any")
 	}
 
-	return packStreamReader(schema.StreamReaderWithConvert(s, func(v map[string]any) (T, error) {
+	return packStreamReader(schema.StreamReaderWithConvert(s, func(v map[Mapping]any) (T, error) {
 		return convertTo[T](v, mustSucceed)
 	}))
 }
 
 func fieldMap(mappings []*Mapping) fieldMapFn {
-	return func(input any) (map[string]any, error) {
-		result := make(map[string]any, len(mappings))
+	return func(input any) (map[Mapping]any, error) {
+		result := make(map[Mapping]any, len(mappings))
 		for _, mapping := range mappings {
 			taken, err := takeOne(input, mapping.from)
 			if err != nil {
 				return nil, err
 			}
 
-			result[mapping.to] = taken
+			result[*mapping] = taken
 		}
 
 		return result, nil
@@ -193,4 +210,30 @@ func checkAndExtractFieldType(field string, typ reflect.Type) (reflect.Type, err
 	}
 
 	return f.Type, nil
+}
+
+func checkMappingGroup(mappings []*Mapping) error {
+	if len(mappings) <= 1 {
+		return nil
+	}
+
+	var toMap = make(map[string]bool, len(mappings))
+
+	for _, mapping := range mappings {
+		if mapping.empty() {
+			return errors.New("multiple mappings have an empty mapping")
+		}
+
+		if len(mapping.to) == 0 {
+			return fmt.Errorf("multiple mappings have a mapping to entire output, mapping= %s", mapping)
+		}
+
+		if _, ok := toMap[mapping.to]; ok {
+			return fmt.Errorf("multiple mappings have the same To = %s, mappings=%v", mapping.to, mappings)
+		}
+
+		toMap[mapping.to] = true
+	}
+
+	return nil
 }

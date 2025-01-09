@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
+	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/internal/mock/components/embedding"
 	"github.com/cloudwego/eino/internal/mock/components/indexer"
 	"github.com/cloudwego/eino/internal/mock/components/model"
@@ -315,7 +316,7 @@ func TestWorkflowCompile(t *testing.T) {
 		w.AddToolsNode("1", &ToolsNode{}).AddInput(NewMapping(START), NewMapping(START).From("Content").To("Content"))
 		w.AddEnd(NewMapping("1"))
 		_, err := w.Compile(ctx)
-		assert.ErrorContains(t, err, "one of them maps to entire input")
+		assert.ErrorContains(t, err, "multiple mappings have an empty mapping")
 	})
 
 	t.Run("multiple mappings have mapping to entire output ", func(t *testing.T) {
@@ -326,7 +327,7 @@ func TestWorkflowCompile(t *testing.T) {
 		)
 		w.AddEnd(NewMapping("1"))
 		_, err := w.Compile(ctx)
-		assert.ErrorContains(t, err, " maps to entire input")
+		assert.ErrorContains(t, err, "multiple mappings have a mapping to entire output")
 	})
 
 	t.Run("multiple mappings have duplicate ToField", func(t *testing.T) {
@@ -337,6 +338,89 @@ func TestWorkflowCompile(t *testing.T) {
 		)
 		w.AddEnd(NewMapping("1"))
 		_, err := w.Compile(ctx)
-		assert.ErrorContains(t, err, "mapped to same field")
+		assert.ErrorContains(t, err, "multiple mappings have the same To")
+	})
+}
+
+func TestFanInToSameDest(t *testing.T) {
+	t.Run("traditional outputKey fan-in with map[string]any", func(t *testing.T) {
+		wf := NewWorkflow[string, []*schema.Message]()
+		wf.AddLambdaNode("1", InvokableLambda(func(ctx context.Context, in string) (output string, err error) {
+			return in, nil
+		}), WithOutputKey("q1")).AddInput(NewMapping(START))
+		wf.AddLambdaNode("2", InvokableLambda(func(ctx context.Context, in string) (output string, err error) {
+			return in, nil
+		}), WithOutputKey("q2")).AddInput(NewMapping(START))
+		wf.AddChatTemplateNode("prompt", prompt.FromMessages(schema.Jinja2, schema.UserMessage("{{q1}}_{{q2}}"))).
+			AddInput(NewMapping("1"), NewMapping("2"))
+		wf.AddEnd(NewMapping("prompt"))
+		c, err := wf.Compile(context.Background())
+		assert.NoError(t, err)
+		out, err := c.Invoke(context.Background(), "query")
+		assert.NoError(t, err)
+		assert.Equal(t, []*schema.Message{{Role: schema.User, Content: "query_query"}}, out)
+	})
+
+	t.Run("multiple int fan-in to single int", func(t *testing.T) {
+		wf := NewWorkflow[int, int]()
+		wf.AddLambdaNode("1", InvokableLambda(func(ctx context.Context, in int) (output int, err error) {
+			return in, nil
+		})).AddInput(NewMapping(START))
+		wf.AddLambdaNode("2", InvokableLambda(func(ctx context.Context, in int) (output int, err error) {
+			return in, nil
+		})).AddInput(NewMapping(START))
+		wf.AddLambdaNode("3", InvokableLambda(func(ctx context.Context, in int) (output int, err error) {
+			return in, nil
+		})).AddInput(NewMapping("1"), NewMapping("2"))
+		wf.AddEnd(NewMapping("3"))
+		_, err := wf.Compile(context.Background())
+		assert.ErrorContains(t, err, "has non-map input type: int")
+	})
+
+	t.Run("fan-in to a field of map", func(t *testing.T) {
+		type dest struct {
+			F map[string]any
+		}
+
+		type in struct {
+			A string
+			B int
+		}
+
+		wf := NewWorkflow[in, dest]()
+		wf.AddLambdaNode("1", InvokableLambda(func(ctx context.Context, in string) (output string, err error) {
+			return in, nil
+		}), WithOutputKey("A")).AddInput(NewMapping(START).From("A"))
+		wf.AddLambdaNode("2", InvokableLambda(func(ctx context.Context, in int) (output int, err error) {
+			return in, nil
+		}), WithOutputKey("B")).AddInput(NewMapping(START).From("B"))
+		wf.AddEnd(NewMapping("1").To("F"), NewMapping("2").To("F"))
+		c, err := wf.Compile(context.Background())
+		assert.NoError(t, err)
+		out, err := c.Invoke(context.Background(), in{A: "a", B: 1})
+		assert.NoError(t, err)
+		assert.Equal(t, dest{F: map[string]any{"A": "a", "B": 1}}, out)
+	})
+
+	t.Run("fan-in to a field of non-map", func(t *testing.T) {
+		type dest struct {
+			F string
+		}
+
+		type in struct {
+			A string
+			B string
+		}
+
+		wf := NewWorkflow[in, dest]()
+		wf.AddLambdaNode("1", InvokableLambda(func(ctx context.Context, in string) (output string, err error) {
+			return in, nil
+		})).AddInput(NewMapping(START).From("A"))
+		wf.AddLambdaNode("2", InvokableLambda(func(ctx context.Context, in string) (output string, err error) {
+			return in, nil
+		})).AddInput(NewMapping(START).From("B"))
+		wf.AddEnd(NewMapping("1").To("F"), NewMapping("2").To("F"))
+		_, err := wf.Compile(context.Background())
+		assert.ErrorContains(t, err, "has non-map input type: string")
 	})
 }

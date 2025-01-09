@@ -848,6 +848,10 @@ func (g *graph) compile(ctx context.Context, opt *graphCompileOptions) (*composa
 		if err != nil {
 			return nil, err
 		}
+
+		if err = g.validateFanIn(invertedEdges, g.node2Mappings); err != nil {
+			return nil, err
+		}
 	}
 
 	if opt != nil {
@@ -1096,4 +1100,67 @@ func (g *graph) checkNodesPreConvertMustSucceed() map[string]bool {
 	}
 
 	return result
+}
+
+func (g *graph) validateFanIn(invertedEdge map[string][]string, node2Mappings map[string][]*Mapping) (err error) {
+	for toNodeKey, fromNodeKeys := range invertedEdge {
+		if len(fromNodeKeys) <= 1 { // no fan in
+			continue
+		}
+
+		toNodeInputType := g.getNodeInputType(toNodeKey)
+
+		mappings, ok := node2Mappings[toNodeKey]
+		if !ok {
+			if toNodeInputType.Kind() != reflect.Map {
+				return fmt.Errorf("fan in downstream node[%s] has non-map input type: %v", toNodeKey, toNodeInputType)
+			}
+
+			for _, fromNodeKey := range fromNodeKeys {
+				fromType := g.getNodeOutputType(fromNodeKey)
+				if fromType != toNodeInputType {
+					return fmt.Errorf("fan in upstream node[%s] has different output type: %v, expected: %v", toNodeKey, fromType, toNodeInputType)
+				}
+			}
+
+			continue
+		}
+
+		toField2Mappings := make(map[string][]*Mapping, len(mappings))
+		for _, mapping := range mappings {
+			toField2Mappings[mapping.to] = append(toField2Mappings[mapping.to], mapping)
+		}
+
+		for fieldName, mappingGroup := range toField2Mappings {
+			if len(mappingGroup) <= 1 {
+				continue
+			}
+
+			toType := toNodeInputType
+			if len(fieldName) > 0 {
+				if toType, err = checkAndExtractFieldType(fieldName, toNodeInputType); err != nil {
+					return err
+				}
+			}
+
+			if toType.Kind() != reflect.Map {
+				return fmt.Errorf("downstream node[%s]'s fan in field[%s] has non-map input type: %v", toNodeKey, fieldName, toType)
+			}
+
+			for _, m := range mappingGroup {
+				fromType := g.getNodeOutputType(m.fromNodeKey)
+				if len(m.from) > 0 {
+					if fromType, err = checkAndExtractFieldType(m.from, fromType); err != nil {
+						return err
+					}
+				}
+
+				if fromType != toType {
+					return fmt.Errorf("upstream node[%s]'s output field[%s] has different input type: %v, expected type: %v", m.fromNodeKey, m.from, fromType, toType)
+				}
+			}
+		}
+	}
+
+	return nil
 }

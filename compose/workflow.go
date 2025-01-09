@@ -332,26 +332,18 @@ func (wf *Workflow[I, O]) addEdgesWithMapping() (err error) {
 			return fmt.Errorf("workflow node = %s has no input", toNode)
 		}
 
-		toSet := make(map[string]bool, len(node.inputs))
-
 		fromNode2Mappings := make(map[string][]*Mapping, len(node.inputs))
 		for i := range node.inputs {
 			input := node.inputs[i]
-
-			if len(input.to) == 0 && len(node.inputs) > 1 {
-				return fmt.Errorf("workflow node = %s has multiple incoming mappings, one of them maps to entire input", toNode)
-			}
-
-			if _, ok := toSet[input.to]; ok {
-				return fmt.Errorf("workflow node = %s has multiple incoming mappings mapped to same field = %s", toNode, input.to)
-			}
-			toSet[input.to] = true
-
 			fromNodeKey := input.fromNodeKey
 			fromNode2Mappings[fromNodeKey] = append(fromNode2Mappings[fromNodeKey], input)
 		}
 
 		for fromNode, mappings := range fromNode2Mappings {
+			if err = checkMappingGroup(mappings); err != nil {
+				return err
+			}
+
 			if mappings[0].empty() {
 				if err = wf.gg.AddEdge(fromNode, toNode); err != nil {
 					return err
@@ -366,25 +358,18 @@ func (wf *Workflow[I, O]) addEdgesWithMapping() (err error) {
 		return errors.New("workflow END has no input mapping")
 	}
 
-	toSet := make(map[string]bool, len(wf.end))
 	fromNode2EndMappings := make(map[string][]*Mapping, len(wf.end))
 	for i := range wf.end {
 		input := wf.end[i]
-
-		if len(input.to) == 0 && len(wf.end) > 1 {
-			return fmt.Errorf("workflow node = %s has multiple incoming mappings, one of them maps to entire input", END)
-		}
-
-		if _, ok := toSet[input.to]; ok {
-			return fmt.Errorf("workflow node = %s has multiple incoming mappings mapped to same field = %s", END, input.to)
-		}
-		toSet[input.to] = true
-
 		fromNodeKey := input.fromNodeKey
 		fromNode2EndMappings[fromNodeKey] = append(fromNode2EndMappings[fromNodeKey], input)
 	}
 
 	for fromNode, mappings := range fromNode2EndMappings {
+		if err = checkMappingGroup(mappings); err != nil {
+			return err
+		}
+
 		if mappings[0].empty() {
 			if err = wf.gg.AddEdge(fromNode, END); err != nil {
 				return err

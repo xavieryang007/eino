@@ -207,10 +207,10 @@ func (rp *runnablePacker[I, O, TOption]) toComposableRunnable() *composableRunna
 }
 
 func buildConverter[I any]() *composableRunnable {
-	inputType := reflect.TypeOf(map[string]any{})
+	inputType := reflect.TypeOf(map[Mapping]any{})
 	outputType := generic.TypeOf[I]()
 	i := func(ctx context.Context, input any, opts ...any) (output any, err error) {
-		in, ok := input.(map[string]any)
+		in, ok := input.(map[Mapping]any)
 		if !ok {
 			panic(newUnexpectedInputTypeErr(inputType, reflect.TypeOf(input)))
 		}

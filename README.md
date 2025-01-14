@@ -270,13 +270,19 @@ compiledGraph.Invoke(ctx, input, WithCallbacks(handler).DesignateNode("node_1"))
 The Eino framework consists of two parts:
 
 - Eino(this repo): Contains Eino's type definitions, streaming mechanism, component abstractions, orchestration capabilities, aspect mechanisms, etc.
-- [EinoExt](https://github.com/cloudwego/eino-ext): Component implementations, callback handlers implementations, component usage examples, and various tools such as graphic design tool, visualized debugging, evaluators and prompt optimizers.
 
-also, [EinoExamples](https://github.com/cloudwego/eino-examples) is the repo containing example applications and best practices for Eino.
+- [EinoExt](https://github.com/cloudwego/eino-ext): Component implementations, callback handlers implementations, component usage examples, and various tools such as evaluators, prompt optimizers.
+
+- [Eino Devops](https://github.com/cloudwego/eino-ext/devops): visualized developing, visualized debugging
+  etc.
+
+- [EinoExamples](https://github.com/cloudwego/eino-examples) is the repo containing example applications and best practices for Eino.
 
 ## Detailed Documentation
 
-// TODO: Link to user manual and other documentation
+For learning and using Eino, we provide a comprehensive Eino User Manual to help you quickly understand the concepts in Eino and master the skills of developing AI applications based on Eino. Start exploring through the [Eino User Manual](https://www.cloudwego.io/docs/eino/) now!
+
+For a quick introduction to building AI applications with Eino, we recommend starting with [Eino: Quick Start](https://www.cloudwego.io/docs/eino/quick_start/)
 
 ## Security
 
@@ -290,7 +296,7 @@ Please do **not** create a public GitHub issue.
 - Issues: [Issues](https://github.com/cloudwego/eino/issues)
 - Lark: Scan the QR code below with [Register Feishu](https://www.feishu.cn/en/) to join our CloudWeGo/eino user group.
 
-  ![LarkGroup](.github/static/img/eino/lark_group_en.png)
+&ensp;&ensp;&ensp; <img src=".github/static/img/eino/lark_group_zh.png" alt="LarkGroup" width="200"/>
 
 ## License
 

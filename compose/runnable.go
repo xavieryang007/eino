@@ -40,8 +40,14 @@ type invoke func(ctx context.Context, input any, opts ...any) (output any, err e
 type transform func(ctx context.Context, input streamReader, opts ...any) (output streamReader, err error)
 
 type streamMapFilter func(key string, isr streamReader) (streamReader, bool)
-type streamConverter func(isr streamReader) streamReader
-type valueChecker func(value any) error
+
+type valueHandler func(value any) (any, error)
+type streamHandler func(streamReader) streamReader
+
+type handlerPair struct {
+	invoke    valueHandler
+	transform streamHandler
+}
 
 // composableRunnable the wrapper for all executable object directly provided by the user.
 // one instance corresponds to one instance of the executable object.
@@ -51,10 +57,12 @@ type composableRunnable struct {
 	i invoke
 	t transform
 
-	// used for passing generic type, is empty in passthrough
-	inputStreamFilter    streamMapFilter
-	inputStreamConverter streamConverter
-	inputValueChecker    valueChecker
+	// when set input key, use this method to convert input from map[string]any to T
+	inputStreamFilter streamMapFilter
+	// when predecessor's output is assignableTypeMay to current node's input, validate and convert(if needed) types using the following two methods
+	inputConverter handlerPair
+	// when current node enable field mapping, convert map input to expected struct using the following two methods
+	inputFieldMappingConverter handlerPair
 
 	inputType  reflect.Type
 	outputType reflect.Type
@@ -143,13 +151,13 @@ func defaultStreamConverter[T any](reader streamReader) streamReader {
 	}))
 }
 
-func defaultValueChecker[T any](v any) error {
-	_, ok := v.(T)
+func defaultValueChecker[T any](v any) (any, error) {
+	nValue, ok := v.(T)
 	if !ok {
 		var t T
-		return fmt.Errorf("runtime type check fail, expected type: %T, actual type: %T", t, v)
+		return nil, fmt.Errorf("runtime type check fail, expected type: %T, actual type: %T", t, v)
 	}
-	return nil
+	return nValue, nil
 }
 
 func (rp *runnablePacker[I, O, TOption]) toComposableRunnable() *composableRunnable {
@@ -157,12 +165,18 @@ func (rp *runnablePacker[I, O, TOption]) toComposableRunnable() *composableRunna
 	outputType := generic.TypeOf[O]()
 	optionType := generic.TypeOf[TOption]()
 	c := &composableRunnable{
-		inputStreamFilter:    defaultStreamMapFilter[I],
-		inputStreamConverter: defaultStreamConverter[I],
-		inputValueChecker:    defaultValueChecker[I],
-		inputType:            inputType,
-		outputType:           outputType,
-		optionType:           optionType,
+		inputStreamFilter: defaultStreamMapFilter[I],
+		inputConverter: handlerPair{
+			invoke:    defaultValueChecker[I],
+			transform: defaultStreamConverter[I],
+		},
+		inputFieldMappingConverter: handlerPair{
+			invoke:    buildFieldMappingConverter[I](),
+			transform: buildStreamFieldMappingConverter[I](),
+		},
+		inputType:  inputType,
+		outputType: outputType,
+		optionType: optionType,
 	}
 
 	i := func(ctx context.Context, input any, opts ...any) (output any, err error) {
@@ -543,8 +557,8 @@ func toGenericRunnable[I, O any](cr *composableRunnable, ctxWrapper func(ctx con
 
 func inputKeyedComposableRunnable(key string, r *composableRunnable) *composableRunnable {
 	wrapper := *r
-	wrapper.inputValueChecker = defaultValueChecker[map[string]any]
-	wrapper.inputStreamConverter = defaultStreamConverter[map[string]any]
+	wrapper.inputConverter.invoke = defaultValueChecker[map[string]any]
+	wrapper.inputConverter.transform = defaultStreamConverter[map[string]any]
 	i := r.i
 	wrapper.i = func(ctx context.Context, input any, opts ...any) (output any, err error) {
 		v, ok := input.(map[string]any)[key]

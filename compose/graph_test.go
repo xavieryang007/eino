@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -74,17 +75,15 @@ func TestSingleGraph(t *testing.T) {
 	assert.NoError(t, err)
 
 	in := map[string]any{"location": "beijing"}
-	ret, err := r.Invoke(ctx, in)
+	_, err = r.Invoke(ctx, in)
 	assert.NoError(t, err)
-	t.Logf("invoke result: %v", ret)
 
 	// stream
 	s, err := r.Stream(ctx, in)
 	assert.NoError(t, err)
 
-	msg, err := concatStreamReader(s)
+	_, err = concatStreamReader(s)
 	assert.NoError(t, err)
-	t.Logf("stream result: %v", msg)
 
 	sr, sw := schema.Pipe[map[string]any](1)
 	_ = sw.Send(in, nil)
@@ -94,19 +93,16 @@ func TestSingleGraph(t *testing.T) {
 	s, err = r.Transform(ctx, sr)
 	assert.NoError(t, err)
 
-	msg, err = concatStreamReader(s)
+	_, err = concatStreamReader(s)
 	assert.NoError(t, err)
-	t.Logf("transform result: %v", msg)
 
 	// error test
 	in = map[string]any{"wrong key": 1}
 	_, err = r.Invoke(ctx, in)
 	assert.Errorf(t, err, "could not find key: location")
-	t.Logf("invoke error: %v", err)
 
 	_, err = r.Stream(ctx, in)
 	assert.Errorf(t, err, "could not find key: location")
-	t.Logf("stream error: %v", err)
 
 	sr, sw = schema.Pipe[map[string]any](1)
 	_ = sw.Send(in, nil)
@@ -114,7 +110,6 @@ func TestSingleGraph(t *testing.T) {
 
 	_, err = r.Transform(ctx, sr)
 	assert.Errorf(t, err, "could not find key: location")
-	t.Logf("transform error: %v", err)
 }
 
 type person interface {
@@ -270,8 +265,6 @@ func TestNestedGraph(t *testing.T) {
 				v++
 			}
 
-			t.Logf("Name=%s, Component=%v, Type=%v, Depth=%d", info.Name, info.Component, info.Type, v)
-
 			return context.WithValue(ctx, ck, v)
 		}).
 		OnStartWithStreamInputFn(func(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
@@ -282,27 +275,23 @@ func TestNestedGraph(t *testing.T) {
 				v++
 			}
 
-			t.Logf("Name=%s, Component=%v, Type=%v, Depth=%d", info.Name, info.Component, info.Type, v)
-
 			return context.WithValue(ctx, ck, v)
 		}).Build()
 
 	// invoke
-	ri, err := r.Invoke(ctx, "london", WithCallbacks(cb))
+	_, err = r.Invoke(ctx, "london", WithCallbacks(cb))
 	assert.NoError(t, err)
-	t.Log(ri)
 
 	// stream
 	rs, err := r.Stream(ctx, "london", WithCallbacks(cb))
 	assert.NoError(t, err)
 	for {
-		ri, err = rs.Recv()
+		_, err = rs.Recv()
 		if err == io.EOF {
 			break
 		}
 
 		assert.NoError(t, err)
-		t.Log(ri)
 	}
 
 	// collect
@@ -310,9 +299,8 @@ func TestNestedGraph(t *testing.T) {
 	_ = sw.Send("london", nil)
 	sw.Close()
 
-	rc, err := r.Collect(ctx, sr, WithCallbacks(cb))
+	_, err = r.Collect(ctx, sr, WithCallbacks(cb))
 	assert.NoError(t, err)
-	t.Log(rc)
 
 	// transform
 	sr, sw = schema.Pipe[string](5)
@@ -322,13 +310,12 @@ func TestNestedGraph(t *testing.T) {
 	rt, err := r.Transform(ctx, sr, WithCallbacks(cb))
 	assert.NoError(t, err)
 	for {
-		ri, err = rt.Recv()
+		_, err = rt.Recv()
 		if err == io.EOF {
 			break
 		}
 
 		assert.NoError(t, err)
-		t.Log(ri)
 	}
 }
 
@@ -383,6 +370,32 @@ func TestValidate(t *testing.T) {
 
 	err = g.AddEdge("2", "3")
 	assert.ErrorContains(t, err, "graph edge[2]-[3]: start node's output type[string] and end node's input type[int] mismatch")
+
+	// test may matched passthrough
+	g2 := NewGraph[any, string]()
+	err = g2.AddLambdaNode("1", InvokableLambda(func(ctx context.Context, input any) (output any, err error) { return input, nil }))
+	assert.NoError(t, err)
+	err = g2.AddPassthroughNode("2")
+	assert.NoError(t, err)
+	err = g2.AddLambdaNode("3", InvokableLambda(func(ctx context.Context, input int) (output string, err error) { return strconv.Itoa(input), nil }))
+	assert.NoError(t, err)
+	err = g2.AddEdge(START, "1")
+	assert.NoError(t, err)
+	err = g2.AddEdge("2", "3")
+	assert.NoError(t, err)
+	err = g2.AddEdge("1", "2")
+	assert.NoError(t, err)
+	err = g2.AddEdge("3", END)
+	assert.NoError(t, err)
+	ru, err := g2.Compile(context.Background())
+	assert.NoError(t, err)
+	// success
+	result, err := ru.Invoke(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.Equal(t, result, "1")
+	// fail
+	_, err = ru.Invoke(context.Background(), "1")
+	assert.ErrorContains(t, err, "runtime type check")
 
 	// test unmatched graph type
 	g = NewGraph[string, string]()
@@ -466,7 +479,7 @@ func TestValidate(t *testing.T) {
 	r, err := anyG.Compile(context.Background())
 	assert.NoError(t, err)
 
-	result, err := r.Invoke(context.Background(), "start")
+	result, err = r.Invoke(context.Background(), "start")
 	assert.NoError(t, err)
 	assert.Equal(t, "startnode1node2", result)
 

@@ -19,7 +19,6 @@ package react
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
@@ -27,13 +26,14 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-type nodeState struct {
-	Messages []*schema.Message
+type state struct {
+	Messages                 []*schema.Message
+	ReturnDirectlyToolCallID string
 }
 
 const (
-	nodeKeyTools     = "tools"
-	nodeKeyChatModel = "chat"
+	nodeKeyTools = "tools"
+	nodeKeyModel = "chat"
 )
 
 // MessageModifier modify the input messages before the model is called.
@@ -55,6 +55,7 @@ type AgentConfig struct {
 	MaxStep int `json:"max_step"`
 
 	// Tools that will make agent return directly when the tool is called.
+	// When multiple tools are called and more than one tool is in the return directly list, only the first one will be returned.
 	ToolReturnDirectly map[string]struct{}
 
 	// StreamOutputHandler is a function to determine whether the model's streaming output contains tool calls.
@@ -110,33 +111,6 @@ func firstChunkStreamToolCallChecker(_ context.Context, sr *schema.StreamReader[
 	return true, nil
 }
 
-// NewAgent creates a ReAct agent that feeds tool response into next round of Chat Model generation.
-//
-// IMPORTANT!! For models that don't output tool calls in the first streaming chunk (e.g. Claude)
-// the default StreamToolCallChecker may not work properly since it only checks the first chunk for tool calls.
-// In such cases, you need to implement a custom StreamToolCallChecker that can properly detect tool calls.
-func NewAgent(ctx context.Context, config *AgentConfig) (*Agent, error) {
-	if config.MessageModifier == nil {
-		config.MessageModifier = func(ctx context.Context, input []*schema.Message) []*schema.Message {
-			return input
-		}
-	}
-	if config.StreamToolCallChecker == nil {
-		config.StreamToolCallChecker = firstChunkStreamToolCallChecker
-	}
-
-	a := &Agent{}
-
-	runnable, err := a.build(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-
-	a.runnable = runnable
-
-	return a, nil
-}
-
 // Agent is the ReAct agent.
 // ReAct agent is a simple agent that handles user messages with a chat model and tools.
 // ReAct will call the chat model, if the message contains tool calls, it will call the tools.
@@ -153,9 +127,145 @@ type Agent struct {
 	runnable compose.Runnable[[]*schema.Message, *schema.Message]
 }
 
-func (r *Agent) build(ctx context.Context, config *AgentConfig) (compose.Runnable[[]*schema.Message, *schema.Message], error) {
-	toolInfos := make([]*schema.ToolInfo, 0, len(config.ToolsConfig.Tools))
-	for _, t := range config.ToolsConfig.Tools {
+// NewAgent creates a ReAct agent that feeds tool response into next round of Chat Model generation.
+//
+// IMPORTANT!! For models that don't output tool calls in the first streaming chunk (e.g. Claude)
+// the default StreamToolCallChecker may not work properly since it only checks the first chunk for tool calls.
+// In such cases, you need to implement a custom StreamToolCallChecker that can properly detect tool calls.
+func NewAgent(ctx context.Context, config *AgentConfig) (_ *Agent, err error) {
+	var (
+		chatModel       = config.Model
+		toolsNode       *compose.ToolsNode
+		toolInfos       []*schema.ToolInfo
+		toolCallChecker = config.StreamToolCallChecker
+		messageModifier = config.MessageModifier
+	)
+
+	if messageModifier == nil {
+		messageModifier = func(ctx context.Context, input []*schema.Message) []*schema.Message {
+			return input
+		}
+	}
+	if toolCallChecker == nil {
+		toolCallChecker = firstChunkStreamToolCallChecker
+	}
+
+	if toolInfos, err = genToolInfos(ctx, config.ToolsConfig); err != nil {
+		return nil, err
+	}
+
+	if err = chatModel.BindTools(toolInfos); err != nil {
+		return nil, err
+	}
+
+	if toolsNode, err = compose.NewToolNode(ctx, &config.ToolsConfig); err != nil {
+		return nil, err
+	}
+
+	graph := compose.NewGraph[[]*schema.Message, *schema.Message](compose.WithGenLocalState(func(ctx context.Context) *state {
+		return &state{Messages: make([]*schema.Message, 0, config.MaxStep+1)}
+	}))
+
+	modelPreHandle := func(ctx context.Context, input []*schema.Message, state *state) ([]*schema.Message, error) {
+		state.Messages = append(state.Messages, input...)
+
+		modifiedInput := make([]*schema.Message, 0, len(state.Messages))
+		copy(modifiedInput, state.Messages)
+		return messageModifier(ctx, modifiedInput), nil
+	}
+	if err = graph.AddChatModelNode(nodeKeyModel, chatModel, compose.WithStatePreHandler(modelPreHandle)); err != nil {
+		return nil, err
+	}
+
+	if err = graph.AddEdge(compose.START, nodeKeyModel); err != nil {
+		return nil, err
+	}
+
+	toolsNodePreHandle := func(ctx context.Context, input *schema.Message, state *state) (*schema.Message, error) {
+		state.Messages = append(state.Messages, input)
+		state.ReturnDirectlyToolCallID = getReturnDirectlyToolCallID(input, config.ToolReturnDirectly)
+		return input, nil
+	}
+	if err = graph.AddToolsNode(nodeKeyTools, toolsNode, compose.WithStatePreHandler(toolsNodePreHandle)); err != nil {
+		return nil, err
+	}
+
+	modelPostBranchCondition := func(_ context.Context, sr *schema.StreamReader[*schema.Message]) (endNode string, err error) {
+		if isToolCall, err := toolCallChecker(ctx, sr); err != nil {
+			return "", err
+		} else if isToolCall {
+			return nodeKeyTools, nil
+		}
+		return compose.END, nil
+	}
+
+	if err = graph.AddBranch(nodeKeyModel, compose.NewStreamGraphBranch(modelPostBranchCondition, map[string]bool{nodeKeyTools: true, compose.END: true})); err != nil {
+		return nil, err
+	}
+
+	if len(config.ToolReturnDirectly) > 0 {
+		if err = buildReturnDirectly(graph); err != nil {
+			return nil, err
+		}
+	} else if err = graph.AddEdge(nodeKeyTools, nodeKeyModel); err != nil {
+		return nil, err
+	}
+
+	runnable, err := graph.Compile(ctx, compose.WithMaxRunSteps(config.MaxStep))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Agent{runnable: runnable}, nil
+}
+
+func buildReturnDirectly(graph *compose.Graph[[]*schema.Message, *schema.Message]) (err error) {
+	directReturn := func(ctx context.Context, msgs *schema.StreamReader[[]*schema.Message]) (*schema.StreamReader[*schema.Message], error) {
+		return schema.StreamReaderWithConvert(msgs, func(msgs []*schema.Message) (*schema.Message, error) {
+			state, err := compose.GetState[*state](ctx)
+			if err != nil {
+				return nil, fmt.Errorf("get state failed: %w", err)
+			}
+			for i := range msgs {
+				msg := msgs[i]
+				if msg != nil && msg.ToolCallID == state.ReturnDirectlyToolCallID {
+					return msg, nil
+				}
+			}
+			return nil, schema.ErrNoValue
+		}), nil
+	}
+
+	nodeKeyDirectReturn := "direct_return"
+	if err = graph.AddLambdaNode(nodeKeyDirectReturn, compose.TransformableLambda(directReturn)); err != nil {
+		return err
+	}
+
+	// this branch checks if the tool called should return directly. It either leads to END or back to ChatModel
+	err = graph.AddBranch(nodeKeyTools, compose.NewStreamGraphBranch(func(ctx context.Context, msgsStream *schema.StreamReader[[]*schema.Message]) (endNode string, err error) {
+		msgsStream.Close()
+
+		s, err := compose.GetState[*state](ctx) // last msg stored in state should contain the tool call information
+		if err != nil {
+			return "", fmt.Errorf("get state in branch failed: %w", err)
+		}
+
+		if len(s.ReturnDirectlyToolCallID) > 0 {
+			return nodeKeyDirectReturn, nil
+		}
+
+		return nodeKeyModel, nil
+	}, map[string]bool{nodeKeyModel: true, nodeKeyDirectReturn: true}))
+	if err != nil {
+		return err
+	}
+
+	return graph.AddEdge(nodeKeyDirectReturn, compose.END)
+}
+
+func genToolInfos(ctx context.Context, config compose.ToolsNodeConfig) ([]*schema.ToolInfo, error) {
+	toolInfos := make([]*schema.ToolInfo, 0, len(config.Tools))
+	for _, t := range config.Tools {
 		tl, err := t.Info(ctx)
 		if err != nil {
 			return nil, err
@@ -164,172 +274,21 @@ func (r *Agent) build(ctx context.Context, config *AgentConfig) (compose.Runnabl
 		toolInfos = append(toolInfos, tl)
 	}
 
-	err := config.Model.BindTools(toolInfos)
-	if err != nil {
-		return nil, err
-	}
-
-	// graph
-	graph := compose.NewGraph[[]*schema.Message, *schema.Message](
-		compose.WithGenLocalState(
-			func(ctx context.Context) *nodeState {
-				return &nodeState{
-					Messages: make([]*schema.Message, 0, 3),
-				}
-			}))
-
-	err = graph.AddChatModelNode(nodeKeyChatModel, config.Model,
-		compose.WithStatePreHandler(func(ctx context.Context, input []*schema.Message, state *nodeState) ([]*schema.Message, error) {
-			state.Messages = append(state.Messages, input...)
-
-			modifiedInput := make([]*schema.Message, 0, len(input))
-			modifiedInput = append(modifiedInput, state.Messages...)
-			modifiedInput = config.MessageModifier(ctx, modifiedInput)
-
-			return modifiedInput, nil
-		}),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	toolsNode, err := compose.NewToolNode(ctx, &config.ToolsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	err = graph.AddToolsNode(nodeKeyTools, toolsNode, compose.WithStatePreHandler(func(ctx context.Context, input *schema.Message, state *nodeState) (*schema.Message, error) {
-		state.Messages = append(state.Messages, input)
-
-		if err := checkReturnDirectlyBeforeToolsNode(input, config); err != nil {
-			return nil, err
-		}
-
-		return input, nil
-	}))
-	if err != nil {
-		return nil, err
-	}
-
-	if err = graph.AddEdge(compose.START, nodeKeyChatModel); err != nil {
-		return nil, err
-	}
-
-	err = graph.AddBranch(nodeKeyChatModel, compose.NewStreamGraphBranch(func(ctx context.Context, sr *schema.StreamReader[*schema.Message]) (endNode string, err error) {
-		isToolCall, err := config.StreamToolCallChecker(ctx, sr)
-		if err != nil {
-			return "", err
-		}
-		if isToolCall {
-			return nodeKeyTools, nil
-		}
-		return compose.END, nil
-	}, map[string]bool{nodeKeyTools: true, compose.END: true}))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(config.ToolReturnDirectly) > 0 {
-		if err = r.buildReturnDirectly(graph, config); err != nil {
-			return nil, err
-		}
-	} else {
-		if err = graph.AddEdge(nodeKeyTools, nodeKeyChatModel); err != nil {
-			return nil, err
-		}
-	}
-
-	var opts []compose.GraphCompileOption
-	if config.MaxStep > 0 {
-		opts = append(opts, compose.WithMaxRunSteps(config.MaxStep))
-	}
-
-	return graph.Compile(ctx, opts...)
+	return toolInfos, nil
 }
 
-func (r *Agent) buildReturnDirectly(graph *compose.Graph[[]*schema.Message, *schema.Message], config *AgentConfig) (err error) {
-	takeFirst := func(ctx context.Context, msgs *schema.StreamReader[[]*schema.Message]) (*schema.StreamReader[*schema.Message], error) {
-		return schema.StreamReaderWithConvert(msgs, func(msgs []*schema.Message) (*schema.Message, error) {
-			if len(msgs) != 1 {
-				return nil, fmt.Errorf("return directly tools node output expected to have only one msg, but got %d", len(msgs))
-			}
-			return msgs[0], nil
-		}), nil
+func getReturnDirectlyToolCallID(input *schema.Message, toolReturnDirectly map[string]struct{}) string {
+	if len(toolReturnDirectly) == 0 {
+		return ""
 	}
 
-	nodeKeyTakeFirst := "convertor" // convert output of tools node ([]*schema.Message) to a single *schema.Message, so that it could be returned directly
-	if err = graph.AddLambdaNode(nodeKeyTakeFirst, compose.TransformableLambda(takeFirst)); err != nil {
-		return err
-	}
-
-	// this branch checks if the tool called should return directly. It either leads to END or back to ChatModel
-	err = graph.AddBranch(nodeKeyTools, compose.NewStreamGraphBranch(func(ctx context.Context, msgsStream *schema.StreamReader[[]*schema.Message]) (endNode string, err error) {
-		state, err := compose.GetState[*nodeState](ctx) // last msg stored in state should contain the tool call information
-		if err != nil {
-			return "", fmt.Errorf("get nodeState in branch failed: %w", err)
-		}
-
-		defer msgsStream.Close()
-
-		for {
-			msgs, err := msgsStream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					return nodeKeyChatModel, nil
-				}
-				return "", fmt.Errorf("receive first packet from tools node result returns err: %w", err)
-			}
-
-			if len(msgs) == 0 {
-				continue
-			}
-
-			toolCallID := msgs[0].ToolCallID
-			if len(toolCallID) == 0 {
-				continue
-			}
-
-			for _, toolCall := range state.Messages[len(state.Messages)-1].ToolCalls {
-				if toolCall.ID == toolCallID {
-					if _, ok := config.ToolReturnDirectly[toolCall.Function.Name]; ok {
-						return nodeKeyTakeFirst, nil
-					}
-				}
-			}
-
-			return nodeKeyChatModel, nil
-		}
-	}, map[string]bool{nodeKeyChatModel: true, nodeKeyTakeFirst: true}))
-	if err != nil {
-		return err
-	}
-
-	return graph.AddEdge(nodeKeyTakeFirst, compose.END)
-}
-
-func checkReturnDirectlyBeforeToolsNode(input *schema.Message, config *AgentConfig) error {
-	if len(config.ToolReturnDirectly) == 0 {
-		return nil
-	}
-
-	if len(input.ToolCalls) > 1 { // check if a return directly tool call belongs to a batch of parallel tool calls, which is not supported for now
-		var returnDirectly bool
-		toolCalls := input.ToolCalls
-		toolNames := make([]string, 0, len(toolCalls))
-		for i := range toolCalls {
-			toolNames = append(toolNames, toolCalls[i].Function.Name)
-
-			if _, ok := config.ToolReturnDirectly[toolCalls[i].Function.Name]; ok {
-				returnDirectly = true
-			}
-		}
-
-		if returnDirectly {
-			return fmt.Errorf("return directly tool call is not allowed when there are parallel tool calls: %v", toolNames)
+	for _, toolCall := range input.ToolCalls {
+		if _, ok := toolReturnDirectly[toolCall.Function.Name]; ok {
+			return toolCall.ID
 		}
 	}
 
-	return nil
+	return ""
 }
 
 // Generate generates a response from the agent.

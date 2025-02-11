@@ -357,6 +357,31 @@ func (m *Message) Format(_ context.Context, vs map[string]any, formatType Format
 	return []*Message{&copied}, nil
 }
 
+const (
+	messageExtraKeyReasoningContent = "reasoning_content"
+)
+
+// SetReasoningContent sets the reasoning content in the message's Extra field.
+func (m *Message) SetReasoningContent(content string) {
+	if m.Extra == nil {
+		m.Extra = make(map[string]any)
+	}
+	m.Extra[messageExtraKeyReasoningContent] = content
+}
+
+// GetReasoningContent retrieves the reasoning content from the message's Extra field.
+// Returns the reasoning content and a boolean indicating whether the content exists.
+// If the content doesn't exist, returns empty string and false.
+func (m *Message) GetReasoningContent() (string, bool) {
+	if m.Extra == nil {
+		return "", false
+	}
+	if content, ok := m.Extra[messageExtraKeyReasoningContent]; ok {
+		return content.(string), true
+	}
+	return "", false
+}
+
 // String returns the string representation of the message.
 // e.g.
 //

@@ -201,6 +201,8 @@ type ResponseMeta struct {
 	FinishReason string `json:"finish_reason,omitempty"`
 	// Usage is the token usage of the chat response, whether usage exists depends on whether the chat model implementation returns.
 	Usage *TokenUsage `json:"usage,omitempty"`
+	// LogProbs is Log probability information for the choice.
+	LogProbs *LogProbs `json:"logprobs,omitempty"`
 }
 
 type Message struct {
@@ -233,6 +235,28 @@ type TokenUsage struct {
 	CompletionTokens int `json:"completion_tokens"`
 	// TotalTokens is the total number of tokens in the request.
 	TotalTokens int `json:"total_tokens"`
+}
+
+type TopLogProbs struct {
+	Token   string  `json:"token"`
+	LogProb float64 `json:"logprob"`
+	Bytes   []byte  `json:"bytes,omitempty"`
+}
+
+// LogProb represents the probability information for a token.
+type LogProb struct {
+	Token   string  `json:"token"`
+	LogProb float64 `json:"logprob"`
+	Bytes   []byte  `json:"bytes,omitempty"` // Omitting the field if it is null
+	// TopLogProbs is a list of the most likely tokens and their log probability, at this token position.
+	// In rare cases, there may be fewer than the number of requested top_logprobs returned.
+	TopLogProbs []TopLogProbs `json:"top_logprobs"`
+}
+
+// LogProbs is the top-level structure containing the log probability information.
+type LogProbs struct {
+	// Content is a list of message content tokens with log probability information.
+	Content []LogProb `json:"content"`
 }
 
 var _ MessagesTemplate = &Message{}

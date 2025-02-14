@@ -68,6 +68,7 @@ type runner struct {
 
 	chanBuilder chanBuilder // could be nil
 	eager       bool
+	dag         bool
 
 	runCtx func(ctx context.Context) context.Context
 
@@ -130,14 +131,22 @@ func (r *runner) run(ctx context.Context, isStream bool, input any, opts ...Opti
 		ctx = r.runCtx(ctx)
 	}
 
-	// Update maxSteps if provided in options.
-	for i := range opts {
-		if opts[i].maxRunSteps > 0 {
-			maxSteps = opts[i].maxRunSteps
+	if r.dag {
+		for i := range opts {
+			if opts[i].maxRunSteps > 0 {
+				return nil, fmt.Errorf("cannot set max run steps in dag")
+			}
 		}
-	}
-	if maxSteps < 1 {
-		return nil, errors.New("recursion limit must be at least 1")
+	} else {
+		// Update maxSteps if provided in options.
+		for i := range opts {
+			if opts[i].maxRunSteps > 0 {
+				maxSteps = opts[i].maxRunSteps
+			}
+		}
+		if maxSteps < 1 {
+			return nil, errors.New("max run steps limit must be at least 1")
+		}
 	}
 
 	// Extract and validate options for each node.
@@ -162,7 +171,7 @@ func (r *runner) run(ctx context.Context, isStream bool, input any, opts ...Opti
 			return nil, fmt.Errorf("context has been canceled: %w", ctx.Err())
 		default:
 		}
-		if step == maxSteps {
+		if !r.dag && step >= maxSteps {
 			return nil, ErrExceedMaxSteps
 		}
 

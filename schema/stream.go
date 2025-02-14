@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cloudwego/eino/utils/safe"
 )
@@ -533,7 +534,8 @@ func (srw *streamReaderWithConvert[T]) toStream() *stream[T] {
 
 type listElement[T any] struct {
 	item     streamItem[T]
-	refCount int
+	refCount int32
+	once     sync.Once
 }
 
 func copyStreamReaders[T any](sr *StreamReader[T], n int) []*StreamReader[T] {
@@ -585,24 +587,7 @@ type cpStreamMem[T any] struct {
 }
 
 func (c *parentStreamReader[T]) peek(idx int) (T, error) {
-	if t, err, ok := c.mem.peek(idx); ok {
-		return t, err
-	}
-
-	c.recvMu.Lock()
-	defer c.recvMu.Unlock()
-
-	// retry read from buffer
-	if t, err, ok := c.mem.peek(idx); ok {
-		return t, err
-	}
-
-	// get value from StreamReader
-	nChunk, err := c.sr.Recv()
-
-	c.mem.set(idx, nChunk, err)
-
-	return nChunk, err
+	return c.mem.peek(idx, c.sr)
 }
 
 func (c *parentStreamReader[T]) close(idx int) {
@@ -611,56 +596,46 @@ func (c *parentStreamReader[T]) close(idx int) {
 	}
 }
 
-func (m *cpStreamMem[T]) peek(idx int) (T, error, bool) {
+func (m *cpStreamMem[T]) peek(idx int, sr *StreamReader[T]) (T, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if elem := m.subStreamList[idx]; elem != nil {
-		next := elem.Next()
-		cElem := elem.Value.(*listElement[T]) // nolint: byted_interface_check_golintx
-		cElem.refCount--
-		if cElem.refCount == 0 {
-			m.buf.Remove(elem)
+	elem := m.subStreamList[idx]
+	if elem == nil {
+		if m.hasFinished {
+			m.mu.Unlock()
+			var t T
+			return t, io.EOF
 		}
-
-		m.subStreamList[idx] = next
-		return cElem.item.chunk, cElem.item.err, true
-	}
-
-	var t T
-
-	if m.hasFinished {
-		return t, io.EOF, true
-	}
-
-	return t, nil, false
-}
-
-func (m *cpStreamMem[T]) set(idx int, nChunk T, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if err == io.EOF { // nolint: byted_s_error_binary
-		m.hasFinished = true
-		return
-	}
-
-	nElem := &listElement[T]{
-		item:     streamItem[T]{chunk: nChunk, err: err},
-		refCount: len(m.subStreamList) - m.closedNum - 1, // except chan receiver
-	}
-
-	if nElem.refCount == 0 {
-		// no need to set buffer when there's no other receivers
-		return
-	}
-
-	elem := m.buf.PushBack(nElem)
-	for i := range m.subStreamList {
-		if m.subStreamList[i] == nil && i != idx && !m.closedList[i] {
-			m.subStreamList[i] = elem
+		elem = m.buf.PushBack(&listElement[T]{
+			refCount: int32(len(m.subStreamList) - m.closedNum),
+		})
+		for i := range m.subStreamList {
+			if m.subStreamList[i] == nil && !m.closedList[i] {
+				m.subStreamList[i] = elem
+			}
 		}
 	}
+	listElem := elem.Value.(*listElement[T])
+	m.mu.Unlock()
+
+	listElem.once.Do(func() {
+		nChunk, err := sr.Recv()
+		if errors.Is(err, io.EOF) {
+			m.hasFinished = true
+		}
+		listElem.item.chunk = nChunk
+		listElem.item.err = err
+	})
+	next := elem.Next()
+	cElem := elem.Value.(*listElement[T])
+	refCount := atomic.AddInt32(&cElem.refCount, -1)
+	if refCount == 0 {
+		m.mu.Lock()
+		m.buf.Remove(elem)
+		m.mu.Unlock()
+	}
+
+	m.subStreamList[idx] = next
+	return cElem.item.chunk, cElem.item.err
 }
 
 func (m *cpStreamMem[T]) close(idx int) (allClosed bool) {

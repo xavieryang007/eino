@@ -27,7 +27,7 @@ type Options struct {
 }
 
 // WithSubIndexes is the option to set the sub indexes for the indexer.
-func WithSubIndexes(subIndexes []string) Option {
+func WithSubIndexesx(subIndexes []string) Option {
 	return Option{
 		apply: func(opts *Options) {
 			opts.SubIndexes = subIndexes

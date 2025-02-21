@@ -187,33 +187,60 @@ jobs:
             echo "has_breaking_changes=false" >> $GITHUB_OUTPUT
           fi
           
-      - name: Find Previous Comment
+
+      - name: Check and Create Comment
         if: steps.apidiff.outputs.has_breaking_changes == 'true'
-        uses: peter-evans/find-comment@v3
-        id: fc
+        uses: actions/github-script@v7
         with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: '⚠️ Breaking API Changes Detected'
-          
-      - name: Comment PR
-        if: steps.apidiff.outputs.has_breaking_changes == 'true'
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-id: ${{ steps.fc.outputs.comment-id || '' }}
-          edit-mode: replace
-          body: |
-            ## ⚠️ Breaking API Changes Detected
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const COMMENT_MARKER = '<!-- API-BREAKING-CHANGES-CHECK -->';
             
-            This pull request contains breaking API changes that may affect compatibility:
+            // 获取所有 PR 评论
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
             
-            ```
-            ${{ env.diff_output }}
-            ```
+            // 检查是否已存在我们的标记评论
+            const markerExists = comments.data.some(comment => 
+              comment.body.includes(COMMENT_MARKER)
+            );
             
-            ### Required Actions:
-            1. Please review these changes carefully
-            2. Update the user documentation to reflect these API changes
-            3. Add a note in the changelog about these breaking changes
+            if (!markerExists) {
+              const commentBody = `${COMMENT_MARKER}
+              🚨 **Breaking Changes Detected**
+              
+              This PR contains breaking changes in the API. Please review carefully and confirm these changes are intended.
+              
+              <details>
+              <summary>Why am I seeing this?</summary>
+              
+              Breaking changes in APIs can affect downstream dependencies and existing integrations.
+              Please ensure that:
+              - The changes are absolutely necessary
+              - They are properly documented
+              - Migration guides are provided if needed
+              </details>
+              
+              ⚠️ Please review and acknowledge these changes.
+              `;
+              
+              // 创建评论
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+              
+              // 添加 review 来阻止合并
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                event: 'REQUEST_CHANGES',
+                body: '🚨 Breaking changes detected - requires review'
+              });
+            }

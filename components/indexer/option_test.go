@@ -33,7 +33,7 @@ func TestOptions(t *testing.T) {
 
 		opts := GetCommonOptions(
 			&Options{},
-			WithSubIndexes(subIndexes),
+			WithSubIndexesx(subIndexes),
 			WithEmbedding(e),
 		)
 

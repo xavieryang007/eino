@@ -52,7 +52,7 @@ func TestParser(t *testing.T) {
 		}
 		defer f.Close()
 
-		docs, err := p.Parse(ctx, f, WithURI("testdata/test.md"))
+		docs, err := p.Parse(ctx, f, WithURIx("testdata/test.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestParser(t *testing.T) {
 		}
 		defer f.Close()
 
-		docs, err := p.Parse(ctx, f, WithURI("x/test.md"))
+		docs, err := p.Parse(ctx, f, WithURIx("x/test.md"))
 		if err != nil {
 			t.Fatal(err)
 		}

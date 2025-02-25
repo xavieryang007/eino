@@ -35,7 +35,7 @@ type Option struct {
 
 // WithURI specifies the URI of the document.
 // It will be used as to select parser in ExtParser.
-func WithURI(uri string) Option {
+func WithURIx(uri string) Option {
 	return Option{
 		apply: func(opts *Options) {
 			opts.URI = uri

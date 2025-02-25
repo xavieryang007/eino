@@ -34,6 +34,7 @@ type Source struct {
 // Loader is a document loader.
 type Loader interface {
 	Load(ctx context.Context, src Source, opts ...LoaderOption) ([]*schema.Document, error)
+	Loda()
 }
 
 // Transformer is to convert documents, such as split or filter.

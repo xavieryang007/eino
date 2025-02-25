@@ -172,17 +172,18 @@ jobs:
           
           go mod tidy
           
-          if ! DIFF_OUTPUT=$(go-apidiff --print-compatible $BASE_SHA $HEAD_SHA 2>&1); then
-            echo "go-apidiff output\n: $DIFF_OUTPUT"
-            DIFF_OUTPUT="uncompatible api changes found: $DIFF_OUTPUT"
+          # 使用 -json 格式获取更详细的输出
+          if ! DIFF_OUTPUT=$(go-apidiff -json $BASE_SHA $HEAD_SHA 2>&1); then
+            echo "go-apidiff output: $DIFF_OUTPUT"
           fi
 
-          # 将输出保存到环境变量，用于后续步骤使用
+          # 保存原始 JSON 输出
           echo "diff_output<<EOF" >> $GITHUB_ENV
           echo "$DIFF_OUTPUT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           
-          if echo "$DIFF_OUTPUT" | grep -q "Incompatible changes:"; then
+          # 检查是否包含破坏性变更
+          if echo "$DIFF_OUTPUT" | grep -q '"incompatible":\s*true\|"breaking":\s*true'; then
             echo "has_breaking_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_breaking_changes=false" >> $GITHUB_OUTPUT
@@ -212,40 +213,114 @@ jobs:
                 pull_number: context.issue.number
               });
               
-              const firstFile = files.data[0];
-              const diffOutput = process.env.diff_output || 'No detailed changes available';
-              
-              const commentBody = [
-                '🚨 **API Breaking Changes Review**',
-                '',
-                'This PR contains breaking changes in the API. Please review carefully and confirm these changes are intended.',
-                '',
-                '<details>',
-                '<summary>Breaking Changes Details</summary>',
-                '',
-                '```',
-                diffOutput,
-                '```',
-                '',
-                'Breaking changes in APIs can affect downstream dependencies and existing integrations.',
-                'Please ensure that:',
-                '- The changes are absolutely necessary',
-                '- They are properly documented',
-                '- Migration guides are provided if needed',
-                '</details>',
-                '',
-                '⚠️ Please resolve this thread after reviewing the breaking changes.'
-              ].join('\n');
-              
-              await github.rest.pulls.createReview({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                event: 'COMMENT',
-                comments: [{
-                  path: firstFile.filename,
-                  position: 1,
-                  body: commentBody
-                }]
-              });
+              try {
+                const diffOutput = process.env.diff_output;
+                const changes = JSON.parse(diffOutput);
+                
+                // 创建一个映射来存储每个文件的破坏性变更
+                const fileBreakingChanges = new Map();
+                
+                // 遍历所有包的变更
+                for (const [pkg, pkgChanges] of Object.entries(changes)) {
+                  // 处理每种类型的变更（函数、类型等）
+                  for (const changeType of ['functions', 'types', 'values']) {
+                    if (pkgChanges[changeType]) {
+                      for (const change of pkgChanges[changeType]) {
+                        if (change.incompatible || change.breaking) {
+                          const filePath = change.position?.filename;
+                          const line = change.position?.line || 1;
+                          
+                          if (filePath) {
+                            if (!fileBreakingChanges.has(filePath)) {
+                              fileBreakingChanges.set(filePath, []);
+                            }
+                            fileBreakingChanges.get(filePath).push({
+                              type: changeType,
+                              name: change.name,
+                              message: change.message,
+                              line: line
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                // 为每个包含破坏性变更的文件创建评论
+                for (const [filePath, changes] of fileBreakingChanges) {
+                  const changesList = changes.map(change => 
+                    `- **${change.type}:** ${change.name}\n  ${change.message}`
+                  ).join('\n\n');
+                  
+                  const commentBody = [
+                    '🚨 **API Breaking Changes Detected**',
+                    '',
+                    'The following breaking changes were found in this file:',
+                    '',
+                    changesList,
+                    '',
+                    '<details>',
+                    '<summary>Review Guidelines</summary>',
+                    '',
+                    'Please ensure that:',
+                    '- The changes are absolutely necessary',
+                    '- They are properly documented',
+                    '- Migration guides are provided if needed',
+                    '</details>',
+                    '',
+                    '⚠️ Please resolve this thread after reviewing the breaking changes.'
+                  ].join('\n');
+                  
+                  await github.rest.pulls.createReview({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.issue.number,
+                    event: 'COMMENT',
+                    comments: [{
+                      path: filePath,
+                      position: changes[0].line,
+                      body: commentBody
+                    }]
+                  });
+                }
+              } catch (error) {
+                // 如果解析 JSON 失败，回退到原来的方式
+                const diffOutput = process.env.diff_output || 'No detailed changes available';
+                const firstFile = files.data[0];
+                
+                const commentBody = [
+                  '🚨 **API Breaking Changes Review**',
+                  '',
+                  'This PR contains breaking changes in the API. Please review carefully and confirm these changes are intended.',
+                  '',
+                  '<details>',
+                  '<summary>Breaking Changes Details</summary>',
+                  '',
+                  '```',
+                  diffOutput,
+                  '```',
+                  '',
+                  'Breaking changes in APIs can affect downstream dependencies and existing integrations.',
+                  'Please ensure that:',
+                  '- The changes are absolutely necessary',
+                  '- They are properly documented',
+                  '- Migration guides are provided if needed',
+                  '</details>',
+                  '',
+                  '⚠️ Please resolve this thread after reviewing the breaking changes.'
+                ].join('\n');
+                
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  event: 'COMMENT',
+                  comments: [{
+                    path: firstFile.filename,
+                    position: 1,
+                    body: commentBody
+                  }]
+                });
+              }
             }

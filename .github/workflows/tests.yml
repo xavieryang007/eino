@@ -193,137 +193,131 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // 获取所有评论，包括 PR 评论、review 评论和 issue 评论
-            const [reviews, issueComments, reviewComments] = await Promise.all([
-              github.rest.pulls.listReviews({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number
-              }),
-              github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number
-              }),
-              github.rest.pulls.listReviewComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number
-              })
-            ]);
+            const reviewComments = await github.rest.pulls.listReviewComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
 
-            // 检查文件是否已有评论
-            const existingComments = new Map();
+            // 检查文件和包的评论记录
+            const existingPackageComments = new Map();
             
             // 检查 review comments
             for (const comment of reviewComments.data) {
               if (comment.body.includes('Breaking API Changes Detected')) {
-                existingComments.set(comment.path, true);
+                // 从评论中提取包名
+                const packageMatch = comment.body.match(/Package: `([^`]+)`/);
+                if (packageMatch) {
+                  const pkg = packageMatch[1];
+                  if (!existingPackageComments.has(pkg)) {
+                    existingPackageComments.set(pkg, new Set());
+                  }
+                  existingPackageComments.get(pkg).add(comment.path);
+                }
               }
             }
             
-            // 检查是否已经有总体的破坏性变更评论
-            const hasBreakingChangeComment = [
-              ...reviews.data,
-              ...issueComments.data,
-              ...reviewComments.data
-            ].some(comment => 
-              comment.body && comment.body.includes('Breaking API Changes Detected')
-            );
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
             
-            if (!hasBreakingChangeComment) {
-              const files = await github.rest.pulls.listFiles({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number
-              });
+            const diffOutput = process.env.diff_output || '';
+            
+            // 解析文本格式的输出
+            const breakingChanges = new Map();
+            
+            let currentPackage = '';
+            let isInIncompatibleSection = false;
+            const lines = diffOutput.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
               
-              const diffOutput = process.env.diff_output || '';
-              
-              // 解析文本格式的输出
-              const breakingChanges = new Map();
-              
-              let currentPackage = '';
-              let isInIncompatibleSection = false;
-              const lines = diffOutput.split('\n');
-              
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                
-                if (line.startsWith('github.com/')) {
-                  currentPackage = line;
-                  if (!breakingChanges.has(currentPackage)) {
-                    breakingChanges.set(currentPackage, []);
-                  }
-                  continue;
+              if (line.startsWith('github.com/')) {
+                currentPackage = line;
+                if (!breakingChanges.has(currentPackage)) {
+                  breakingChanges.set(currentPackage, []);
                 }
-                
-                if (line === 'Incompatible changes:') {
-                  isInIncompatibleSection = true;
-                  continue;
-                }
-                
-                if (line === '') {
-                  isInIncompatibleSection = false;
-                  continue;
-                }
-                
-                if (isInIncompatibleSection && line.startsWith('- ')) {
-                  const change = line.substring(2);
-                  if (currentPackage) {
-                    breakingChanges.get(currentPackage).push(change);
-                  }
-                }
+                continue;
               }
               
-              const changedFiles = files.data;
+              if (line === 'Incompatible changes:') {
+                isInIncompatibleSection = true;
+                continue;
+              }
               
-              for (const [pkg, changes] of breakingChanges) {
-                if (changes.length === 0) continue; 
-                
-                const pkgPath = pkg.split('/').slice(3).join('/');
-                const matchingFile = changedFiles.find(file => 
-                  file.filename.includes(pkgPath)
-                ) || changedFiles[0];
-                
-                if (matchingFile && !existingComments.has(matchingFile.filename)) {
-                  const changesList = changes.map(change => {
-                    const [name, desc] = change.split(':').map(s => s.trim());
-                    return `- **${name}:** ${desc}`;
-                  }).join('\n');
-                  
-                  const commentBody = [
-                    '🚨 **Breaking API Changes Detected**',
-                    '',
-                    `Package: \`${pkg}\``,
-                    '',
-                    'Incompatible changes:',
-                    changesList,
-                    '',
-                    '<details>',
-                    '<summary>Review Guidelines</summary>',
-                    '',
-                    'Please ensure that:',
-                    '- The changes are absolutely necessary',
-                    '- They are properly documented',
-                    '- Migration guides are provided if needed',
-                    '</details>',
-                    '',
-                    '⚠️ Please resolve this thread after reviewing the breaking changes.'
-                  ].join('\n');
-                  
-                  // 创建评论并记录已评论的文件
-                  await github.rest.pulls.createReview({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: context.issue.number,
-                    event: 'COMMENT',
-                    comments: [{
-                      path: matchingFile.filename,
-                      position: matchingFile.patch ? matchingFile.patch.split('\n').findIndex(line => line.startsWith('+')) + 1 : 1,
-                      body: commentBody
-                    }]
-                  });
-                  existingComments.set(matchingFile.filename, true);
+              if (line === '') {
+                isInIncompatibleSection = false;
+                continue;
+              }
+              
+              if (isInIncompatibleSection && line.startsWith('- ')) {
+                const change = line.substring(2);
+                if (currentPackage) {
+                  breakingChanges.get(currentPackage).push(change);
                 }
+              }
+            }
+            
+            const changedFiles = files.data;
+            
+            for (const [pkg, changes] of breakingChanges) {
+              if (changes.length === 0) continue; 
+              
+              const pkgPath = pkg.split('/').slice(3).join('/');
+              const matchingFile = changedFiles.find(file => 
+                file.filename.includes(pkgPath)
+              ) || changedFiles[0];
+              
+              // 检查这个包是否在这个文件中已经有评论
+              const hasCommentForPackage = existingPackageComments.has(pkg) && 
+                existingPackageComments.get(pkg).has(matchingFile.filename);
+              
+              if (matchingFile && !hasCommentForPackage) {
+                const changesList = changes.map(change => {
+                  const [name, desc] = change.split(':').map(s => s.trim());
+                  return `- **${name}:** ${desc}`;
+                }).join('\n');
+                
+                const commentBody = [
+                  '🚨 **Breaking API Changes Detected**',
+                  '',
+                  `Package: \`${pkg}\``,
+                  '',
+                  'Incompatible changes:',
+                  changesList,
+                  '',
+                  '<details>',
+                  '<summary>Review Guidelines</summary>',
+                  '',
+                  'Please ensure that:',
+                  '- The changes are absolutely necessary',
+                  '- They are properly documented',
+                  '- Migration guides are provided if needed',
+                  '</details>',
+                  '',
+                  '⚠️ Please resolve this thread after reviewing the breaking changes.'
+                ].join('\n');
+                
+                // 创建评论并记录已评论的文件
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  event: 'COMMENT',
+                  comments: [{
+                    path: matchingFile.filename,
+                    position: matchingFile.patch ? matchingFile.patch.split('\n').findIndex(line => line.startsWith('+')) + 1 : 1,
+                    body: commentBody
+                  }]
+                });
+                
+                // 更新评论记录
+                if (!existingPackageComments.has(pkg)) {
+                  existingPackageComments.set(pkg, new Set());
+                }
+                existingPackageComments.get(pkg).add(matchingFile.filename);
               }
             }

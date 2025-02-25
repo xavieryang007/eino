@@ -177,6 +177,7 @@ jobs:
             DIFF_OUTPUT="uncompatible api changes found: $DIFF_OUTPUT"
           fi
 
+          # 将输出保存到环境变量，用于后续步骤使用
           echo "diff_output<<EOF" >> $GITHUB_ENV
           echo "$DIFF_OUTPUT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -186,61 +187,65 @@ jobs:
           else
             echo "has_breaking_changes=false" >> $GITHUB_OUTPUT
           fi
-          
 
-      - name: Check and Create Comment
+      - name: Create Review Thread
         if: steps.apidiff.outputs.has_breaking_changes == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const COMMENT_MARKER = '<!-- API-BREAKING-CHANGES-CHECK -->';
-            
-            // 获取所有 PR 评论
-            const comments = await github.rest.issues.listComments({
+            const reviews = await github.rest.pulls.listReviews({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              pull_number: context.issue.number
             });
             
-            // 检查是否已存在我们的标记评论
-            const markerExists = comments.data.some(comment => 
-              comment.body.includes(COMMENT_MARKER)
+            const reviewThreadExists = reviews.data.some(review => 
+              review.body && 
+              review.body.includes('API Breaking Changes Review')
             );
             
-            if (!markerExists) {
-              const commentBody = `${COMMENT_MARKER}
-              🚨 **Breaking Changes Detected**
-              
-              This PR contains breaking changes in the API. Please review carefully and confirm these changes are intended.
-              
-              <details>
-              <summary>Why am I seeing this?</summary>
-              
-              Breaking changes in APIs can affect downstream dependencies and existing integrations.
-              Please ensure that:
-              - The changes are absolutely necessary
-              - They are properly documented
-              - Migration guides are provided if needed
-              </details>
-              
-              ⚠️ Please review and acknowledge these changes.
-              `;
-              
-              // 创建评论
-              await github.rest.issues.createComment({
+            if (!reviewThreadExists) {
+              const files = await github.rest.pulls.listFiles({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody
+                pull_number: context.issue.number
               });
               
-              // 添加 review 来阻止合并
+              const firstFile = files.data[0];
+              const diffOutput = process.env.diff_output || 'No detailed changes available';
+              
+              const commentBody = [
+                '🚨 **API Breaking Changes Review**',
+                '',
+                'This PR contains breaking changes in the API. Please review carefully and confirm these changes are intended.',
+                '',
+                '<details>',
+                '<summary>Breaking Changes Details</summary>',
+                '',
+                '```',
+                diffOutput,
+                '```',
+                '',
+                'Breaking changes in APIs can affect downstream dependencies and existing integrations.',
+                'Please ensure that:',
+                '- The changes are absolutely necessary',
+                '- They are properly documented',
+                '- Migration guides are provided if needed',
+                '</details>',
+                '',
+                '⚠️ Please resolve this thread after reviewing the breaking changes.'
+              ].join('\n');
+              
               await github.rest.pulls.createReview({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.issue.number,
-                event: 'REQUEST_CHANGES',
-                body: '🚨 Breaking changes detected - requires review'
+                event: 'COMMENT',
+                comments: [{
+                  path: firstFile.filename,
+                  position: 1,
+                  body: commentBody
+                }]
               });
             }

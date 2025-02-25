@@ -200,8 +200,9 @@ jobs:
 
             const existingComments = new Map();
             for (const review of reviews.data) {
-              if (review.body && review.body.includes('Breaking API Changes')) {
-                // 获取评论详情
+              console.log("review body", review.body)
+              if (review.body && review.body.includes('Breaking API Changes Detected')) {
+                console.log("found")
                 const reviewComments = await github.rest.pulls.listReviewComments({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -209,7 +210,9 @@ jobs:
                   review_id: review.id
                 });
                 
+                console.log("reviewComments", reviewComments.data)
                 for (const comment of reviewComments.data) {
+                  console.log("comment path:", comment.path)
                   existingComments.set(comment.path, true);
                 }
               }

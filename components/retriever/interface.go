@@ -39,3 +39,8 @@ import (
 type Retriever interface {
 	Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error)
 }
+
+type Options struct {
+}
+
+type Option func(opts *Options)

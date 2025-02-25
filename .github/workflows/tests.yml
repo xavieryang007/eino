@@ -192,38 +192,45 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const reviews = await github.rest.pulls.listReviews({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number
-            });
+            // 获取所有评论，包括 PR 评论、review 评论和 issue 评论
+            const [reviews, issueComments, reviewComments] = await Promise.all([
+              github.rest.pulls.listReviews({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number
+              }),
+              github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number
+              }),
+              github.rest.pulls.listReviewComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number
+              })
+            ]);
 
+            // 检查文件是否已有评论
             const existingComments = new Map();
-            for (const review of reviews.data) {
-              console.log("review body", review.body)
-              if (review.body && review.body.includes('Breaking API Changes Detected')) {
-                console.log("found")
-                const reviewComments = await github.rest.pulls.listReviewComments({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: context.issue.number,
-                  review_id: review.id
-                });
-                
-                console.log("reviewComments", reviewComments.data)
-                for (const comment of reviewComments.data) {
-                  console.log("comment path:", comment.path)
-                  existingComments.set(comment.path, true);
-                }
+            
+            // 检查 review comments
+            for (const comment of reviewComments.data) {
+              if (comment.body.includes('Breaking API Changes Detected')) {
+                existingComments.set(comment.path, true);
               }
             }
             
-            const reviewThreadExists = reviews.data.some(review => 
-              review.body && 
-              review.body.includes('API Breaking Changes Review')
+            // 检查是否已经有总体的破坏性变更评论
+            const hasBreakingChangeComment = [
+              ...reviews.data,
+              ...issueComments.data,
+              ...reviewComments.data
+            ].some(comment => 
+              comment.body && comment.body.includes('Breaking API Changes Detected')
             );
             
-            if (!reviewThreadExists) {
+            if (!hasBreakingChangeComment) {
               const files = await github.rest.pulls.listFiles({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -304,6 +311,7 @@ jobs:
                     '⚠️ Please resolve this thread after reviewing the breaking changes.'
                   ].join('\n');
                   
+                  // 创建评论并记录已评论的文件
                   await github.rest.pulls.createReview({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
@@ -315,6 +323,7 @@ jobs:
                       body: commentBody
                     }]
                   });
+                  existingComments.set(matchingFile.filename, true);
                 }
               }
             }

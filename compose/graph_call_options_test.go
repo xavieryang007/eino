@@ -229,7 +229,7 @@ func TestCallOptionsOneByOne(t *testing.T) {
 		assert.NoError(t, err)
 		outs, err := r.Invoke(ctx,
 			map[string]any{"input": []string{}},
-			WithEmbeddingOption(embedding.WithModel("123")),
+			WithEmbeddingOption(embedding.WithModelx("123")),
 		)
 		assert.NoError(t, err)
 		assert.Contains(t, outs, "output")

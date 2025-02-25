@@ -30,7 +30,7 @@ type Option struct {
 }
 
 // WithModel is the option to set the model for the embedding.
-func WithModel(model string) Option {
+func WithModelx(model string) Option {
 	return Option{
 		apply: func(opts *Options) {
 			opts.Model = &model

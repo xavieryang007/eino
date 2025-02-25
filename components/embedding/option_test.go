@@ -24,7 +24,7 @@ import (
 
 func TestOptions(t *testing.T) {
 	defaultModel := "default_model"
-	opts := GetCommonOptions(&Options{Model: &defaultModel}, WithModel("test_model"))
+	opts := GetCommonOptions(&Options{Model: &defaultModel}, WithModelx("test_model"))
 	assert.NotNil(t, opts.Model)
 	assert.Equal(t, *opts.Model, "test_model")
 }

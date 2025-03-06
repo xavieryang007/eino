@@ -249,7 +249,7 @@ type ResponseMeta struct {
 type Message struct {
 	Role    RoleType `json:"role"`
 	Content string   `json:"content"`
-
+	ReasoningContent string   `json:"reasoning_content"`
 	// if MultiContent is not empty, use this instead of Content
 	// if MultiContent is empty, use Content
 	MultiContent []ChatMessagePart `json:"multi_content,omitempty"`
@@ -579,6 +579,8 @@ func ConcatMessages(msgs []*Message) (*Message, error) {
 	var (
 		contents   []string
 		contentLen int
+		reasoningContent   []string
+		reasoningContentLen int
 		toolCalls  []ToolCall
 		ret        = Message{}
 		extraList  = make([]map[string]any, 0, len(msgs))
@@ -615,6 +617,11 @@ func ConcatMessages(msgs []*Message) (*Message, error) {
 		if msg.Content != "" {
 			contents = append(contents, msg.Content)
 			contentLen += len(msg.Content)
+		}
+
+		if msg.ReasoningContent != "" {
+			reasoningContent = append(reasoningContent, msg.ReasoningContent)
+			reasoningContentLen += len(msg.ReasoningContent)
 		}
 
 		if len(msg.ToolCalls) > 0 {
@@ -671,6 +678,20 @@ func ConcatMessages(msgs []*Message) (*Message, error) {
 		}
 
 		ret.Content = sb.String()
+	}
+
+	if len(reasoningContent) > 0 {
+		var sb strings.Builder
+		sb.Grow(contentLen)
+		sb.WriteString(ret.Content)
+		for _, content := range reasoningContent {
+			_, err := sb.WriteString(content)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		ret.ReasoningContent = sb.String()
 	}
 
 	if len(toolCalls) > 0 {
